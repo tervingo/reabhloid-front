@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Species Sim</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      height: 100vh;
+      font-family: sans-serif;
+      background: #111;
+      color: #eee;
+    }
+
+    #world-container {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #world {
+      border: 1px solid #444;
+      image-rendering: pixelated;
+    }
+
+    #ui {
+      width: 500px;
+      padding: 8px;
+      background: #202020;
+      display: flex;
+      flex-direction: column;
+      box-sizing: border-box;
+      overflow-y: auto;
+    }
+
+    #ui-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-column-gap: 12px;
+      align-items: flex-start;
+    }
+
+    .ui-col {
+      font-size: 13px;
+    }
+
+    .ui-left {
+      border-right: 1px solid #444;
+      padding-right: 8px;
+    }
+
+    .ui-right {
+      padding-left: 8px;
+    }
+
+    h2 {
+      margin: 6px 0;
+      color: chartreuse;
+    }
+
+    h3 {
+      margin: 6px 0;
+      color: orangeRed;
+    }
+
+    label {
+      display: block;
+      margin-top: 6px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+    }
+
+    button {
+      margin-right: 4px;
+      margin-bottom: 4px;
+    }
+
+    p {
+      margin: 2px 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="world-container">
+    <canvas id="world" width="1000" height="1000"></canvas>
+  </div>
+
+  <div id="ui">
+    <div id="ui-columns">
+      <div class="ui-col ui-left">
+        <h2>Inspector celda</h2>
+        <p>--------------------</p>
+        <p>Posición: <span id="cellPos">-</span></p>
+        <p>Especie: <span id="cellSpecies">-</span></p>
+        <p>Nutriente: <span id="cellNutrient">-</span></p>
+        <p>Zona: <span id="cellZone">-</span></p>
+        <p>Viva: <span id="cellAlive">no</span></p>
+        <p>tempOpt: <span id="cellTempOpt">-</span></p>
+        <p>Energía: <span id="cellEnergy">-</span></p>
+        <p>Edad: <span id="cellAge">-</span></p>
+        <p>maxAge: <span id="cellMaxAge">-</span></p>
+        <p>Índice depredación: <span id="cellPredationIndex">-</span></p>
+
+        <h3>Especies vivas</h3>
+        <div id="speciesList" style="font: size 15px; max-height:220px; overflow-y:auto;"></div>
+      </div>
+
+      <div class="ui-col ui-right">
+        <h2>Controls</h2>
+        <p>--------------------</p>
+        <button id="start">Start</button>
+        <button id="pause">Pause</button>
+        <button id="step">Step</button>
+        <button id="restart">Restart</button>
+        <label>
+          Tick delay (ms)
+          <input id="tickDelay" type="range" min="0" max="500" value="200" />
+        </label>
+
+<!--¡¡         <h3>Estado global</h3>
+        <div id="stats">
+          <p>Tick: <span id="tickValue">0</span></p>
+          <p>Población: <span id="popValue">0</span></p>
+          <p>tempOpt media: <span id="tempOptMean">0</span> ºC</p>
+          <p>tempOpt desv: <span id="tempOptStd">0</span> ºC</p>
+          <p>maxAge media: <span id="maxAgeMean">0</span> días</p>
+        </div>
+ -->
+        <h3>Zonas (temperatura)</h3>
+        <label>
+          Zona 0 (fría)
+          <input id="zone0Temp" type="range" min="0" max="100" value="20" />
+        </label>
+        <label>
+          Zona 1 (templada)
+          <input id="zone1Temp" type="range" min="0" max="100" value="50" />
+        </label>
+        <label>
+          Zona 2 (caliente)
+          <input id="zone2Temp" type="range" min="0" max="100" value="70" />
+        </label>
+        <p>
+          Zona 0: <span id="zone0TempLabel">0</span> ºC<br />
+          Zona 1: <span id="zone1TempLabel">0</span> ºC<br />
+          Zona 2: <span id="zone2TempLabel">0</span> ºC
+        </p>
+
+        <h3>Nutriente por zona</h3>
+        <label>
+          Zona 0 regen
+          <input id="zone0Regen" type="range" min="0" max="100" value="35" />
+          <span id="zone0RegenLabel"></span>
+        </label>
+        <label>
+          Zona 1 regen
+          <input id="zone1Regen" type="range" min="0" max="100" value="60" />
+          <span id="zone1RegenLabel"></span>
+        </label>
+        <label>
+          Zona 2 regen
+          <input id="zone2Regen" type="range" min="0" max="100" value="35" />
+          <span id="zone2RegenLabel"></span>
+        </label>
+
+        <h3>Estrés térmico</h3>
+        <label>
+          Intensidad estrés
+          <input id="tempStress" type="range" min="1" max="50" value="10" />
+          <span id="tempStressLabel"></span>
+        </label>
+
+        <h3>Especiación</h3>
+        <label for="speciesM">M inicial (mutación especie): </label>
+        <input
+          id="speciesM"
+          type="range"
+          min="1"
+          max="20"
+          value="6"
+          step="1"
+        />
+        <span id="speciesMLabel">0.05</span>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main_species.ts"></script>
+</body>
+
+</html>
