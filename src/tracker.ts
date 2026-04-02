@@ -3,6 +3,7 @@ import type { WorldSpecies } from "./world_species";
 import { GRID_HEIGHT } from "./types";
 
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+console.log("VITE_API_URL = ", API);
 const SNAPSHOT_INTERVAL = 100;
 const DOMINANCE_THRESHOLD = 0.8;
 const MAX_TICKS = 50000;
@@ -86,8 +87,11 @@ export class RunTracker {
     const pop = this.world.getPopulation();
     if (pop === 0) return "end_extinction";
 
-    const dominant = this.getDominantSpecies();
-    if (dominant && dominant.fraction >= DOMINANCE_THRESHOLD) return "end_dominance";
+    const liveSpecies = this.world.getLiveSpeciesCount();
+    if (liveSpecies > 1 && pop >= 10) {
+      const dominant = this.getDominantSpecies();
+      if (dominant && dominant.fraction >= DOMINANCE_THRESHOLD) return "end_dominance";
+    }
 
     return "continue";
   }
