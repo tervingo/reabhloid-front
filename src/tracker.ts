@@ -5,9 +5,9 @@ import { GRID_HEIGHT } from "./types";
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 console.log("VITE_API_URL = ", API);
 const SNAPSHOT_INTERVAL = 100;
-const DOMINANCE_THRESHOLD = 0.8;
+const DOMINANCE_RATIO = 99.5;  // la dominante debe tener ≥99.5x más individuos que la segunda
 const MIN_DOMINANT_POP = 500;  // debe tener al menos 500 células (20% del tablero)
-const MIN_TICKS_FOR_DOMINANCE = 500;
+const MIN_TICKS_FOR_DOMINANCE = 5000;
 const MAX_TICKS = 50000;
 
 export class RunTracker {
@@ -91,7 +91,7 @@ export class RunTracker {
 
     if (tick >= MIN_TICKS_FOR_DOMINANCE) {
       const dominant = this.getDominantSpecies();
-      if (dominant && dominant.fraction >= DOMINANCE_THRESHOLD && dominant.population >= MIN_DOMINANT_POP) return "end_dominance";
+      if (dominant && dominant.population >= MIN_DOMINANT_POP && dominant.secondPopulation > 0 && dominant.population >= dominant.secondPopulation * DOMINANCE_RATIO) return "end_dominance";
     }
 
     return "continue";
@@ -167,13 +167,15 @@ export class RunTracker {
     }));
   }
 
-  private getDominantSpecies(): { speciesId: number; fraction: number; population: number } | null {
+  private getDominantSpecies(): { speciesId: number; fraction: number; population: number; secondPopulation: number } | null {
     const stats = this.computeSpeciesStats();
     if (stats.length === 0) return null;
     const total = stats.reduce((s, sp) => s + sp.population, 0);
     if (total === 0) return null;
-    const top = stats.reduce((a, b) => a.population > b.population ? a : b);
-    return { speciesId: top.speciesId, fraction: top.population / total, population: top.population };
+    const sorted = [...stats].sort((a, b) => b.population - a.population);
+    const top = sorted[0];
+    const secondPopulation = sorted[1]?.population ?? 0;
+    return { speciesId: top.speciesId, fraction: top.population / total, population: top.population, secondPopulation };
   }
 
   get id() { return this.runId; }

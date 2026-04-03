@@ -16,6 +16,7 @@ export class WorldSpecies {
   reproCooldown = 4;
 
   tempStressIntensity = 0.1;
+  baseMutationRate = 0.02;  // tasa basal no evolucionable (suelo garantizado de variación)
 
   // Estaciones
   seasonPeriod = 300;    // ticks por ciclo completo
@@ -178,7 +179,7 @@ export class WorldSpecies {
   }
 
   private mutateOrganism(parent: OrganismSpecies, x: number, y: number): OrganismSpecies {
-    const r = parent.mutationRate;
+    const r = parent.mutationRate + this.baseMutationRate;
     const jitter = (v: number, scale: number) =>
       v + (Math.random() * 2 - 1) * scale * r;
 
@@ -222,7 +223,7 @@ export class WorldSpecies {
 
   private shouldSpeciate(parent: OrganismSpecies, child: OrganismSpecies): boolean {
     let diffCount = 0;
-    const m = parent.mutationRate;
+    const m = parent.mutationRate + this.baseMutationRate;
 
     // umbrales muy bajos, acordes con jitter * M
     if (Math.abs(child.tempOpt - parent.tempOpt) > 0.003) diffCount++;
