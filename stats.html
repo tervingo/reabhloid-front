@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Reabhloid — Estadísticas</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: sans-serif;
+      background: #111;
+      color: #eee;
+    }
+
+    h1 { color: chartreuse; margin-bottom: 16px; }
+    h2 { color: orangeRed; margin: 0 0 8px 0; }
+
+    a { color: #7cf; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    #runs-list { max-width: 860px; }
+
+    .run-card {
+      background: #1e1e1e;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 10px;
+    }
+
+    .run-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .run-meta { font-size: 13px; color: #aaa; margin-top: 4px; }
+
+    .run-actions { display: flex; gap: 8px; flex-shrink: 0; }
+
+    button {
+      padding: 4px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .btn-view { background: #2a6; color: #fff; }
+    .btn-view:hover { background: #3b7; }
+    .btn-delete { background: #a33; color: #fff; }
+    .btn-delete:hover { background: #c44; }
+
+    #chart-section {
+      display: none;
+      max-width: 900px;
+      margin-top: 20px;
+    }
+
+    #chart-title { color: chartreuse; margin-bottom: 8px; }
+
+    #chart-canvas {
+      background: #1a1a1a;
+      border: 1px solid #444;
+      border-radius: 4px;
+    }
+
+    #chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 12px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    #back-btn {
+      margin-bottom: 16px;
+      background: #444;
+      color: #eee;
+      display: none;
+    }
+    #back-btn:hover { background: #555; }
+
+    #loading { color: #888; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>Estadísticas de simulaciones</h1>
+  <p><a href="/">← Volver a la simulación</a></p>
+
+  <button id="back-btn">← Volver a la lista</button>
+
+  <div id="runs-list">
+    <p id="loading">Cargando runs...</p>
+  </div>
+
+  <div id="chart-section">
+    <h2 id="chart-title"></h2>
+    <canvas id="chart-canvas" width="860" height="480"></canvas>
+    <div id="chart-legend"></div>
+  </div>
+
+  <script type="module" src="/src/stats.ts"></script>
+</body>
+</html>
