@@ -6,6 +6,8 @@ const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 console.log("VITE_API_URL = ", API);
 const SNAPSHOT_INTERVAL = 100;
 const DOMINANCE_THRESHOLD = 0.8;
+const MIN_DOMINANT_POP = 500;  // debe tener al menos 500 células (20% del tablero)
+const MIN_TICKS_FOR_DOMINANCE = 500;
 const MAX_TICKS = 50000;
 
 export class RunTracker {
@@ -87,10 +89,9 @@ export class RunTracker {
     const pop = this.world.getPopulation();
     if (pop === 0) return "end_extinction";
 
-    const liveSpecies = this.world.getLiveSpeciesCount();
-    if (liveSpecies > 1 && pop >= 10) {
+    if (tick >= MIN_TICKS_FOR_DOMINANCE) {
       const dominant = this.getDominantSpecies();
-      if (dominant && dominant.fraction >= DOMINANCE_THRESHOLD) return "end_dominance";
+      if (dominant && dominant.fraction >= DOMINANCE_THRESHOLD && dominant.population >= MIN_DOMINANT_POP) return "end_dominance";
     }
 
     return "continue";
@@ -166,13 +167,13 @@ export class RunTracker {
     }));
   }
 
-  private getDominantSpecies(): { speciesId: number; fraction: number } | null {
+  private getDominantSpecies(): { speciesId: number; fraction: number; population: number } | null {
     const stats = this.computeSpeciesStats();
     if (stats.length === 0) return null;
     const total = stats.reduce((s, sp) => s + sp.population, 0);
     if (total === 0) return null;
     const top = stats.reduce((a, b) => a.population > b.population ? a : b);
-    return { speciesId: top.speciesId, fraction: top.population / total };
+    return { speciesId: top.speciesId, fraction: top.population / total, population: top.population };
   }
 
   get id() { return this.runId; }
