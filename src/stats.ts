@@ -32,15 +32,39 @@ interface Snapshot {
 
 async function loadRuns() {
   const res = await fetch(`${API}/runs`);
-  const runs: Run[] = await res.json();
+  const allRuns: Run[] = await res.json();
+
+  // Filtrar runs sin ninguna especie que haya llegado a 50 individuos y borrarlos
+  const validRuns: Run[] = [];
+  for (const run of allRuns) {
+    const snapsRes = await fetch(`${API}/runs/${run.id}/snapshots`);
+    const snapshots: Snapshot[] = await snapsRes.json();
+    const hasRelevant = snapshots.some(snap =>
+      snap.species.some(sp => sp.population >= MIN_POPULATION_FOR_CHART)
+    );
+    if (hasRelevant) {
+      validRuns.push(run);
+    } else {
+      await fetch(`${API}/runs/${run.id}`, { method: "DELETE" });
+    }
+  }
+
   loading.remove();
-  renderRunList(runs);
+  renderRunList(validRuns);
 }
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
+  // Sin opciones de timezone: usa la zona local del navegador
   return new Date(iso).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
 }
+
+const REASON_LABELS: Record<string, string> = {
+  max_ticks: "Límite alcanzado",
+  dominance: "Dominancia",
+  extinction: "Extinción",
+  manual: "Manual",
+};
 
 function renderRunList(runs: Run[]) {
   runsList.style.display = "block";
@@ -57,8 +81,9 @@ function renderRunList(runs: Run[]) {
     const card = document.createElement("div");
     card.className = "run-card";
 
-    const reason = run.endReason ?? "en curso";
+    const reason = run.endReason ? (REASON_LABELS[run.endReason] ?? run.endReason) : "—";
     const ticks = run.endTick != null ? `${run.endTick} ticks` : "—";
+    const fin = run.endedAt ? formatDate(run.endedAt) : "—";
 
     card.innerHTML = `
       <div class="run-header">
@@ -70,7 +95,7 @@ function renderRunList(runs: Run[]) {
       </div>
       <div class="run-meta">
         Inicio: ${formatDate(run.startedAt)} &nbsp;|&nbsp;
-        Fin: ${formatDate(run.endedAt)} &nbsp;|&nbsp;
+        Fin: ${fin} &nbsp;|&nbsp;
         Razón: <em>${reason}</em> &nbsp;|&nbsp;
         Duración: ${ticks}
         ${run.dominantSpeciesId != null ? ` &nbsp;|&nbsp; Sp. dominante: #${run.dominantSpeciesId}` : ""}

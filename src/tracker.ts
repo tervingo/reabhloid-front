@@ -8,7 +8,7 @@ const SNAPSHOT_INTERVAL = 100;
 const DOMINANCE_RATIO = 99.5;  // la dominante debe tener ≥99.5x más individuos que la segunda
 const MIN_DOMINANT_POP = 500;  // debe tener al menos 500 células (20% del tablero)
 const MIN_TICKS_FOR_DOMINANCE = 5000;
-const MAX_TICKS = 50000;
+const MAX_TICKS = 20000;
 
 export class RunTracker {
   private runId: string;
