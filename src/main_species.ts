@@ -2,6 +2,7 @@
 import { WorldSpecies } from "./world_species";
 import { GRID_WIDTH, GRID_HEIGHT } from "./types";
 import { RunTracker } from "./tracker";
+import { LiveChart } from "./live_chart";
 
 const canvas = document.getElementById("world") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -50,6 +51,10 @@ const speciesListDiv = document.getElementById("speciesList") as HTMLDivElement;
 
 const CELL_SIZE = canvas.width / GRID_WIDTH;
 const INFO_BAR_HEIGHT = 40;
+const CHART_INTERVAL = 100;
+
+const liveChartCanvas = document.getElementById("live-chart") as HTMLCanvasElement;
+const liveChart = new LiveChart(liveChartCanvas);
 
 let world: WorldSpecies;
 let tracker: RunTracker | null = null;
@@ -458,6 +463,14 @@ function loop(timestamp: number) {
       world.step();
       accumulator -= tickDelay;
       updateUIAndDraw();
+      if (world.tickCount % CHART_INTERVAL === 0) {
+        const species = world.getLiveSpeciesInfo().map(sp => ({
+          speciesId: sp.id,
+          population: sp.count,
+          color: sp.color,
+        }));
+        liveChart.addSnapshot(world.tickCount, species);
+      }
       if (tracker) {
         tracker.onTick().then(result => {
           if (result !== "continue") {
@@ -475,6 +488,7 @@ function loop(timestamp: number) {
 
 async function initWorld() {
   if (tracker) await tracker.endRun("manual");
+  liveChart.reset();
   world = new WorldSpecies();
   accumulator = 0;
   isRunning = false;
