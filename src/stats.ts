@@ -11,6 +11,16 @@ const backBtn = document.getElementById("back-btn") as HTMLButtonElement;
 
 const MIN_POPULATION_FOR_CHART = 50;
 
+// Tooltip div (creado una sola vez)
+const tooltip = document.createElement("div");
+tooltip.style.cssText = `
+  position: fixed; display: none; pointer-events: none;
+  background: rgba(20,20,20,0.93); border: 1px solid #555; border-radius: 5px;
+  padding: 7px 10px; font-size: 12px; color: #eee; line-height: 1.6;
+  white-space: nowrap; z-index: 100;
+`;
+document.body.appendChild(tooltip);
+
 interface Run {
   id: string;
   startedAt: string;
@@ -23,12 +33,29 @@ interface Run {
 interface SpeciesSnapshot {
   speciesId: number;
   population: number;
+  meanTempOpt: number;
+  meanPredationIndex: number;
+  meanMutationRate: number;
+  meanMaxAge: number;
 }
 
 interface Snapshot {
   tick: number;
   species: SpeciesSnapshot[];
 }
+
+interface Marker {
+  cx: number;
+  cy: number;
+  spId: number;
+  color: string;
+  isFirst: boolean;
+  entry: SpeciesSnapshot;
+  tick: number;
+}
+
+// Listener activo del canvas (para poder eliminarlo al redibujar)
+let activeMouseHandler: ((e: MouseEvent) => void) | null = null;
 
 async function loadRuns() {
   const res = await fetch(`${API}/runs`);
@@ -55,7 +82,6 @@ async function loadRuns() {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  // Sin opciones de timezone: usa la zona local del navegador
   return new Date(iso).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
 }
 
@@ -71,6 +97,7 @@ function renderRunList(runs: Run[]) {
   chartSection.style.display = "none";
   backBtn.style.display = "none";
   runsList.innerHTML = "";
+  tooltip.style.display = "none";
 
   if (runs.length === 0) {
     runsList.innerHTML = "<p>No hay runs registrados.</p>";
@@ -141,7 +168,7 @@ function drawChart(ctx: CanvasRenderingContext2D, snapshots: Snapshot[]) {
   const plotW = W - PAD.left - PAD.right;
   const plotH = H - PAD.top - PAD.bottom;
 
-  // Calcular qué especies alguna vez tuvieron >= MIN_POPULATION_FOR_CHART
+  // Qué especies alguna vez tuvieron >= MIN_POPULATION_FOR_CHART
   const maxPopPerSpecies = new Map<number, number>();
   for (const snap of snapshots) {
     for (const sp of snap.species) {
@@ -178,7 +205,6 @@ function drawChart(ctx: CanvasRenderingContext2D, snapshots: Snapshot[]) {
   const scaleX = (t: number) => PAD.left + ((t - minTick) / (maxTick - minTick || 1)) * plotW;
   const scaleY = (p: number) => PAD.top + plotH - (p / (maxPop || 1)) * plotH;
 
-  // Fondo
   ctx.clearRect(0, 0, W, H);
 
   // Grid horizontal
@@ -233,33 +259,56 @@ function drawChart(ctx: CanvasRenderingContext2D, snapshots: Snapshot[]) {
   ctx.fillText("individuos", 0, 0);
   ctx.restore();
 
-  // Paleta de colores para especies
   const palette = [
     "#4fc", "#f74", "#9df", "#fa4", "#c8f", "#7f4", "#f9c", "#4af",
     "#ff7", "#aff", "#f4a", "#7cf", "#fc7", "#c7f", "#7fc", "#f77",
   ];
 
-  // Líneas por especie
+  const markers: Marker[] = [];
   const sortedIds = [...relevantIds].sort((a, b) => a - b);
+
   sortedIds.forEach((spId, idx) => {
     const color = palette[idx % palette.length];
-    const points: Array<[number, number]> = [];
 
+    // Recopilar todos los snapshots donde aparece esta especie
+    const entries: Array<{ tick: number; entry: SpeciesSnapshot }> = [];
     for (const snap of snapshots) {
       const entry = snap.species.find(s => s.speciesId === spId);
-      if (entry) points.push([snap.tick, entry.population]);
+      if (entry) entries.push({ tick: snap.tick, entry });
     }
+    if (entries.length === 0) return;
 
-    if (points.length === 0) return;
-
+    // Dibujar línea
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.moveTo(scaleX(points[0][0]), scaleY(points[0][1]));
-    for (let i = 1; i < points.length; i++) {
-      ctx.lineTo(scaleX(points[i][0]), scaleY(points[i][1]));
+    ctx.moveTo(scaleX(entries[0].tick), scaleY(entries[0].entry.population));
+    for (let i = 1; i < entries.length; i++) {
+      ctx.lineTo(scaleX(entries[i].tick), scaleY(entries[i].entry.population));
     }
     ctx.stroke();
+
+    // Marcador de primer tick
+    const first = entries[0];
+    markers.push({
+      cx: scaleX(first.tick),
+      cy: scaleY(first.entry.population),
+      spId, color, isFirst: true,
+      entry: first.entry,
+      tick: first.tick,
+    });
+
+    // Marcador de último tick (solo si hay más de un punto y no es el mismo)
+    const last = entries[entries.length - 1];
+    if (last.tick !== first.tick) {
+      markers.push({
+        cx: scaleX(last.tick),
+        cy: scaleY(last.entry.population),
+        spId, color, isFirst: false,
+        entry: last.entry,
+        tick: last.tick,
+      });
+    }
 
     // Leyenda
     const item = document.createElement("div");
@@ -270,9 +319,69 @@ function drawChart(ctx: CanvasRenderingContext2D, snapshots: Snapshot[]) {
     `;
     chartLegend.appendChild(item);
   });
+
+  // Dibujar marcadores encima de las líneas
+  const MARKER_R = 5;
+  for (const m of markers) {
+    ctx.beginPath();
+    ctx.arc(m.cx, m.cy, MARKER_R, 0, Math.PI * 2);
+    ctx.fillStyle = m.isFirst ? m.color : "#111";
+    ctx.fill();
+    ctx.strokeStyle = m.color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Reemplazar listener anterior
+  if (activeMouseHandler) {
+    chartCanvas.removeEventListener("mousemove", activeMouseHandler);
+    chartCanvas.removeEventListener("mouseleave", activeMouseHandler);
+  }
+
+  activeMouseHandler = (e: MouseEvent) => {
+    if (e.type === "mouseleave") {
+      tooltip.style.display = "none";
+      return;
+    }
+    const rect = chartCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+
+    // Buscar marcador más cercano dentro de radio de detección
+    const HIT_R = 10;
+    let hit: Marker | null = null;
+    let bestDist = HIT_R;
+    for (const m of markers) {
+      const d = Math.sqrt((mx - m.cx) ** 2 + (my - m.cy) ** 2);
+      if (d < bestDist) { bestDist = d; hit = m; }
+    }
+
+    if (!hit) {
+      tooltip.style.display = "none";
+      return;
+    }
+
+    const sp = hit.entry;
+    const label = hit.isFirst ? "Primer tick" : "Último tick";
+    tooltip.innerHTML = `
+      <strong style="color:${hit.color}">sp. #${hit.spId}</strong> — ${label} (tick ${hit.tick})<br>
+      Población: ${sp.population}<br>
+      TempOpt: ${(sp.meanTempOpt * 50).toFixed(1)} ºC<br>
+      Depredación: ${sp.meanPredationIndex.toFixed(3)}<br>
+      Mutación: ${sp.meanMutationRate.toFixed(4)}<br>
+      maxAge: ${Math.round(sp.meanMaxAge)}
+    `;
+    tooltip.style.display = "block";
+    tooltip.style.left = (e.clientX + 14) + "px";
+    tooltip.style.top = (e.clientY - 10) + "px";
+  };
+
+  chartCanvas.addEventListener("mousemove", activeMouseHandler);
+  chartCanvas.addEventListener("mouseleave", activeMouseHandler);
 }
 
 backBtn.addEventListener("click", () => {
+  tooltip.style.display = "none";
   loadRuns();
 });
 
