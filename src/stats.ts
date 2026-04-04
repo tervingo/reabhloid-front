@@ -84,7 +84,9 @@ async function loadRuns() {
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
+  // MongoDB omite la Z final — sin ella el navegador puede interpretar como local en vez de UTC
+  const utc = iso.endsWith("Z") || iso.includes("+") ? iso : iso + "Z";
+  return new Date(utc).toLocaleString("es-ES", { dateStyle: "short", timeStyle: "short" });
 }
 
 const REASON_LABELS: Record<string, string> = {
