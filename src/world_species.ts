@@ -19,8 +19,8 @@ export class WorldSpecies {
   baseMutationRate = 0.02;  // tasa basal no evolucionable (suelo garantizado de variación)
 
   // Estaciones
-  seasonPeriod = 300;    // ticks por ciclo completo
-  seasonAmplitude = 0.12; // ±6 ºC en escala 0-1
+  seasonPeriod = 1000;    // ticks por ciclo completo
+  seasonAmplitude = 0.06; // ±3 ºC en escala 0-1
 
   // Especies
   speciesCounter = 1;
