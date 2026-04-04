@@ -62,6 +62,14 @@ let lastTime = 0;
 let accumulator = 0;
 let tickDelay = Number(tickDelayInput.value);
 let isRunning = false;
+let simStatus = "en pausa";
+
+const END_REASON_LABELS: Record<string, string> = {
+  max_ticks:  "finalizada · límite alcanzado",
+  dominance:  "finalizada · dominancia",
+  extinction: "finalizada · extinción",
+  manual:     "finalizada · manual",
+};
 
 tickDelayInput.addEventListener("input", () => {
   tickDelay = Number(tickDelayInput.value);
@@ -186,11 +194,13 @@ function attachListeners() {
 
   startBtn.addEventListener("click", () => {
     isRunning = true;
+    simStatus = "en curso";
     lastTime = performance.now();
   });
 
   pauseBtn.addEventListener("click", () => {
     isRunning = false;
+    simStatus = "en pausa";
   });
 
   restartBtn.addEventListener("click", async () => {
@@ -226,6 +236,12 @@ function draw() {
   ctx.fillText(tickText, 6, INFO_BAR_HEIGHT / 2);
   ctx.fillText(popText, 150, INFO_BAR_HEIGHT / 2);
   ctx.fillText(speciesText, 300, INFO_BAR_HEIGHT / 2);
+
+  const statusColor = simStatus.startsWith("finalizada") ? "#f88" : simStatus === "en curso" ? "#4fc" : "#fa4";
+  ctx.fillStyle = statusColor;
+  ctx.textAlign = "right";
+  ctx.fillText(simStatus, canvas.width - 8, INFO_BAR_HEIGHT / 2);
+  ctx.textAlign = "left";
 
   for (let y = 0; y < GRID_HEIGHT; y++) {
     for (let x = 0; x < GRID_WIDTH; x++) {
@@ -478,6 +494,7 @@ function loop(timestamp: number) {
             const reason = result === "end_max" ? "max_ticks"
               : result === "end_extinction" ? "extinction"
               : "dominance";
+            simStatus = END_REASON_LABELS[reason] ?? "finalizada";
             tracker!.endRun(reason);
           }
         });
@@ -488,6 +505,7 @@ function loop(timestamp: number) {
 
 async function initWorld() {
   if (tracker) await tracker.endRun("manual");
+  simStatus = "en pausa";
   liveChart.reset();
   world = new WorldSpecies();
   accumulator = 0;
