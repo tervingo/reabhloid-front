@@ -204,16 +204,16 @@ async function showChart(run: Run) {
 }
 
 function renderSettings(s: RunSettings) {
-  const t = s.zoneBaseTemps;
-  const r = s.zoneRegen;
+  const t = s.zoneBaseTemps ?? [0, 0.5, 0.7];
+  const r = s.zoneRegen ?? [0, 0, 0];
   const groups: Array<[string, string]> = [
-    ["Zona 0 (fría)",     `${(t[0]*50).toFixed(1)} ºC · regen ${r[0].toFixed(3)}`],
-    ["Zona 1 (templada)", `${(t[1]*50).toFixed(1)} ºC · regen ${r[1].toFixed(3)}`],
-    ["Zona 2 (caliente)", `${(t[2]*50).toFixed(1)} ºC · regen ${r[2].toFixed(3)}`],
-    ["Estaciones",        `periodo ${s.seasonPeriod} ticks · amplitud ±${(s.seasonAmplitude*50).toFixed(1)} ºC`],
-    ["Estrés térmico",    s.tempStressIntensity.toFixed(2)],
-    ["Mutación inicial",  s.initialMutationRate.toFixed(4)],
-    ["Umbral reproducción", s.reproThreshold.toFixed(2)],
+    ["Zona 0 (fría)",       `${(t[0]*50).toFixed(1)} ºC · regen ${r[0].toFixed(3)}`],
+    ["Zona 1 (templada)",   `${(t[1]*50).toFixed(1)} ºC · regen ${r[1].toFixed(3)}`],
+    ["Zona 2 (caliente)",   `${(t[2]*50).toFixed(1)} ºC · regen ${r[2].toFixed(3)}`],
+    ["Estaciones",          `periodo ${s.seasonPeriod ?? "—"} ticks · amplitud ±${((s.seasonAmplitude ?? 0)*50).toFixed(1)} ºC`],
+    ["Estrés térmico",      (s.tempStressIntensity ?? 0).toFixed(2)],
+    ["Mutación inicial",    (s.initialMutationRate ?? 0).toFixed(4)],
+    ["Umbral reproducción", (s.reproThreshold ?? 0).toFixed(2)],
   ];
   runSettingsDiv.innerHTML = groups.map(([label, val]) => `
     <div class="setting-group">
