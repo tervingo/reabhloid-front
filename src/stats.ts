@@ -373,16 +373,11 @@ function drawChart(ctx: CanvasRenderingContext2D, snapshots: Snapshot[]) {
   ctx.fillText("individuos", 0, 0);
   ctx.restore();
 
-  const palette = [
-    "#4fc", "#f74", "#9df", "#fa4", "#c8f", "#7f4", "#f9c", "#4af",
-    "#ff7", "#aff", "#f4a", "#7cf", "#fc7", "#c7f", "#7fc", "#f77",
-  ];
-
   const markers: Marker[] = [];
   const sortedIds = [...relevantIds].sort((a, b) => a - b);
 
-  sortedIds.forEach((spId, idx) => {
-    const color = palette[idx % palette.length];
+  sortedIds.forEach((spId) => {
+    const color = speciesColor(spId);
 
     // Recopilar todos los snapshots donde aparece esta especie
     const entries: Array<{ tick: number; entry: SpeciesSnapshot }> = [];
@@ -492,6 +487,11 @@ function drawChart(ctx: CanvasRenderingContext2D, snapshots: Snapshot[]) {
 
   chartCanvas.addEventListener("mousemove", activeMouseHandler);
   chartCanvas.addEventListener("mouseleave", activeMouseHandler);
+}
+
+function speciesColor(speciesId: number): string {
+  const hue = (speciesId * 157) % 360;
+  return `hsl(${hue}, 90%, 50%)`;
 }
 
 function renderStars(rating: number): string {
