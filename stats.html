@@ -51,6 +51,43 @@
     .btn-view:hover { background: #3b7; }
     .btn-delete { background: #a33; color: #fff; }
     .btn-delete:hover { background: #c44; }
+    .btn-edit { background: #446; color: #fff; }
+    .btn-edit:hover { background: #558; }
+
+    .edit-form {
+      display: none;
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #333;
+    }
+    .edit-form.open { display: block; }
+
+    .edit-form textarea {
+      width: 100%;
+      box-sizing: border-box;
+      background: #111;
+      color: #eee;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 6px;
+      font-size: 13px;
+      resize: vertical;
+      min-height: 60px;
+    }
+
+    .stars { display: flex; gap: 6px; margin: 8px 0; align-items: center; }
+    .stars span { font-size: 13px; color: #aaa; margin-right: 4px; }
+    .star-btn {
+      background: none; border: none; cursor: pointer;
+      font-size: 22px; padding: 0; line-height: 1; color: #555;
+    }
+    .star-btn.active { color: #fc4; }
+
+    .edit-actions { display: flex; gap: 8px; margin-top: 8px; }
+    .btn-save { background: #46a; color: #fff; }
+    .btn-save:hover { background: #57b; }
+    .btn-cancel { background: #333; color: #ccc; }
+    .btn-cancel:hover { background: #444; }
 
     #chart-section {
       display: none;

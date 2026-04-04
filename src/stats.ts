@@ -28,6 +28,8 @@ interface Run {
   endReason: string | null;
   endTick: number | null;
   dominantSpeciesId: number | null;
+  comment: string;
+  rating: number;  // 0 = sin valoración, 1-3 = estrellas
 }
 
 interface SpeciesSnapshot {
@@ -112,12 +114,15 @@ function renderRunList(runs: Run[]) {
     const ticks = run.endTick != null ? `${run.endTick} ticks` : "—";
     const fin = run.endedAt ? formatDate(run.endedAt) : "—";
 
+    const starsDisplay = renderStars(run.rating);
+
     card.innerHTML = `
       <div class="run-header">
         <strong>${run.id}</strong>
         <div class="run-actions">
-          <button class="btn-view" data-id="${run.id}">Ver</button>
-          <button class="btn-delete" data-id="${run.id}">Borrar</button>
+          <button class="btn-view">Ver</button>
+          <button class="btn-edit">Editar</button>
+          <button class="btn-delete">Borrar</button>
         </div>
       </div>
       <div class="run-meta">
@@ -127,10 +132,28 @@ function renderRunList(runs: Run[]) {
         Duración: ${ticks}
         ${run.dominantSpeciesId != null ? ` &nbsp;|&nbsp; Sp. dominante: #${run.dominantSpeciesId}` : ""}
       </div>
+      <div class="run-extra">
+        <span class="rating-display">${starsDisplay}</span>
+        ${run.comment ? `<span class="run-comment" style="color:#aaa;font-size:12px;margin-left:8px">${escapeHtml(run.comment)}</span>` : ""}
+      </div>
+      <div class="edit-form">
+        <textarea class="comment-input" placeholder="Comentario...">${escapeHtml(run.comment ?? "")}</textarea>
+        <div class="stars">
+          <span>Valoración:</span>
+          ${[1,2,3].map(n => `<button class="star-btn ${(run.rating ?? 0) >= n ? "active" : ""}" data-star="${n}">★</button>`).join("")}
+          <button class="star-btn clear-stars" title="Sin valoración">✕</button>
+        </div>
+        <div class="edit-actions">
+          <button class="btn-save">Guardar</button>
+          <button class="btn-cancel">Cancelar</button>
+        </div>
+      </div>
     `;
 
     card.querySelector(".btn-view")!.addEventListener("click", () => showChart(run));
     card.querySelector(".btn-delete")!.addEventListener("click", () => deleteRun(run.id, card));
+    card.querySelector(".btn-edit")!.addEventListener("click", () => toggleEditForm(card));
+    setupEditForm(card, run);
 
     runsList.appendChild(card);
   }
@@ -378,6 +401,72 @@ function drawChart(ctx: CanvasRenderingContext2D, snapshots: Snapshot[]) {
 
   chartCanvas.addEventListener("mousemove", activeMouseHandler);
   chartCanvas.addEventListener("mouseleave", activeMouseHandler);
+}
+
+function renderStars(rating: number): string {
+  if (rating === 0) return "";
+  return [1,2,3].map(n => `<span style="color:${n <= rating ? "#fc4" : "#444"};font-size:16px">★</span>`).join("");
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+
+function toggleEditForm(card: HTMLElement) {
+  card.querySelector(".edit-form")!.classList.toggle("open");
+}
+
+function setupEditForm(card: HTMLElement, run: Run) {
+  const form = card.querySelector(".edit-form")!;
+  const starBtns = form.querySelectorAll<HTMLButtonElement>(".star-btn[data-star]");
+  let currentRating = run.rating ?? 0;
+
+  function updateStarDisplay() {
+    starBtns.forEach(btn => {
+      btn.classList.toggle("active", Number(btn.dataset.star) <= currentRating);
+    });
+  }
+
+  starBtns.forEach(btn => {
+    btn.addEventListener("click", () => {
+      currentRating = Number(btn.dataset.star);
+      updateStarDisplay();
+    });
+  });
+
+  form.querySelector(".clear-stars")!.addEventListener("click", () => {
+    currentRating = 0;
+    updateStarDisplay();
+  });
+
+  form.querySelector(".btn-cancel")!.addEventListener("click", () => {
+    form.classList.remove("open");
+  });
+
+  form.querySelector(".btn-save")!.addEventListener("click", async () => {
+    const comment = (form.querySelector(".comment-input") as HTMLTextAreaElement).value;
+    await fetch(`${API}/runs/${run.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comment, rating: currentRating }),
+    });
+    run.comment = comment;
+    run.rating = currentRating;
+    // Actualizar visualización en la tarjeta sin recargar
+    const ratingDisplay = card.querySelector(".rating-display")!;
+    ratingDisplay.innerHTML = renderStars(currentRating);
+    const commentSpan = card.querySelector(".run-comment");
+    if (commentSpan) commentSpan.textContent = comment;
+    else if (comment) {
+      const extra = card.querySelector(".run-extra")!;
+      const span = document.createElement("span");
+      span.className = "run-comment";
+      span.style.cssText = "color:#aaa;font-size:12px;margin-left:8px";
+      span.textContent = comment;
+      extra.appendChild(span);
+    }
+    form.classList.remove("open");
+  });
 }
 
 backBtn.addEventListener("click", () => {
