@@ -9,6 +9,7 @@ const chartCanvas = document.getElementById("chart-canvas") as HTMLCanvasElement
 const chartLegend = document.getElementById("chart-legend") as HTMLDivElement;
 const backBtn = document.getElementById("back-btn") as HTMLButtonElement;
 const runSettingsDiv = document.getElementById("run-settings") as HTMLDivElement;
+const boardCanvas = document.getElementById("board-canvas") as HTMLCanvasElement;
 
 const MIN_POPULATION_FOR_CHART = 50;
 
@@ -21,6 +22,15 @@ tooltip.style.cssText = `
   white-space: nowrap; z-index: 100;
 `;
 document.body.appendChild(tooltip);
+
+interface FinalCell {
+  x: number;
+  y: number;
+  speciesId: number;
+  energy: number;
+  tempOpt: number;
+  predationIndex: number;
+}
 
 interface RunSettings {
   zoneBaseTemps: number[];
@@ -41,6 +51,8 @@ interface Run {
   dominantSpeciesId: number | null;
   comment: string;
   rating: number;  // 0 = sin valoración, 1-3 = estrellas
+  finalBoard?: FinalCell[];
+  settings?: RunSettings;
 }
 
 interface SpeciesSnapshot {
@@ -197,10 +209,50 @@ async function showChart(run: Run) {
     fetch(`${API}/runs/${run.id}`),
   ]);
   const snapshots: Snapshot[] = await snapsRes.json();
-  const fullRun: Run & { settings?: RunSettings } = await runRes.json();
+  const fullRun: Run = await runRes.json();
 
   if (fullRun.settings) renderSettings(fullRun.settings);
   drawChart(ctx, snapshots);
+  drawFinalBoard(fullRun.finalBoard ?? []);
+}
+
+function drawFinalBoard(cells: FinalCell[]) {
+  const GRID = 50;
+  const CELL = boardCanvas.width / GRID;
+  const ctx = boardCanvas.getContext("2d")!;
+  ctx.clearRect(0, 0, boardCanvas.width, boardCanvas.height);
+
+  if (cells.length === 0) {
+    ctx.fillStyle = "#333";
+    ctx.fillRect(0, 0, boardCanvas.width, boardCanvas.height);
+    ctx.fillStyle = "#666";
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("sin datos", boardCanvas.width / 2, boardCanvas.height / 2);
+    return;
+  }
+
+  // Fondo con color de zona
+  const zoneColors = ["#0a1a30", "#0a1f0a", "#2a0a0a"];
+  for (let y = 0; y < GRID; y++) {
+    const zone = y < Math.floor(GRID / 3) ? 0 : y < Math.floor(2 * GRID / 3) ? 1 : 2;
+    ctx.fillStyle = zoneColors[zone];
+    ctx.fillRect(0, y * CELL, boardCanvas.width, CELL);
+  }
+
+  // Organismos
+  const PREDATOR_THRESHOLD = 0.3;
+  for (const c of cells) {
+    const hue = (c.speciesId * 157) % 360;
+    ctx.fillStyle = `hsl(${hue}, 90%, 50%)`;
+    ctx.fillRect(c.x * CELL, c.y * CELL, CELL, CELL);
+
+    if (c.predationIndex > PREDATOR_THRESHOLD) {
+      ctx.strokeStyle = "rgba(255,60,60,0.7)";
+      ctx.lineWidth = CELL > 4 ? 1 : 0.5;
+      ctx.strokeRect(c.x * CELL + 0.5, c.y * CELL + 0.5, CELL - 1, CELL - 1);
+    }
+  }
 }
 
 function renderSettings(s: RunSettings) {

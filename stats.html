@@ -97,6 +97,32 @@
 
     #chart-title { color: chartreuse; margin-bottom: 6px; }
 
+    #chart-and-board {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+      max-width: 880px;
+    }
+
+    #board-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    #board-title {
+      color: #aaa;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+    #board-canvas {
+      border: 1px solid #444;
+      image-rendering: pixelated;
+      display: block;
+    }
+
     #run-settings {
       display: flex;
       flex-wrap: wrap;
@@ -154,12 +180,17 @@
     /* --- Responsive --- */
     @media (max-width: 900px) {
       #runs-list, #chart-section { max-width: 100%; }
+      #chart-and-board { flex-direction: column; }
 
-      #chart-canvas {
+        #chart-canvas {
         width: 100% !important;
         height: auto !important;
-        aspect-ratio: 860 / 480;
+        aspect-ratio: 560 / 480;
         display: block;
+      }
+      #board-canvas {
+        width: 100% !important;
+        height: auto !important;
       }
     }
 
@@ -190,8 +221,16 @@
   <div id="chart-section">
     <h2 id="chart-title"></h2>
     <div id="run-settings"></div>
-    <canvas id="chart-canvas" width="860" height="480"></canvas>
-    <div id="chart-legend"></div>
+    <div id="chart-and-board">
+      <div>
+        <canvas id="chart-canvas" width="560" height="480"></canvas>
+        <div id="chart-legend"></div>
+      </div>
+      <div id="board-section">
+        <div id="board-title">Estado final</div>
+        <canvas id="board-canvas" width="300" height="300"></canvas>
+      </div>
+    </div>
   </div>
 
   <script type="module" src="/src/stats.ts"></script>

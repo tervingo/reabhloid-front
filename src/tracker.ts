@@ -106,7 +106,27 @@ export class RunTracker {
       tick: this.world.tickCount,
       reason,
       dominantSpeciesId: dominant?.speciesId ?? null,
+      finalBoard: this.serializeFinalBoard(),
     });
+  }
+
+  private serializeFinalBoard() {
+    const cells: Array<{ x: number; y: number; speciesId: number; energy: number; tempOpt: number; predationIndex: number }> = [];
+    for (let y = 0; y < 50; y++) {
+      for (let x = 0; x < 50; x++) {
+        const org = this.world.grid[y][x].org;
+        if (org) {
+          cells.push({
+            x, y,
+            speciesId: org.speciesId,
+            energy: Math.round(org.energy * 100) / 100,
+            tempOpt: Math.round(org.tempOpt * 1000) / 1000,
+            predationIndex: Math.round(org.predationIndex * 1000) / 1000,
+          });
+        }
+      }
+    }
+    return cells;
   }
 
   private async sendSnapshot(tick: number) {
