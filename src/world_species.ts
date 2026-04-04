@@ -15,7 +15,7 @@ export class WorldSpecies {
   reproChildEnergy = 0.5;
   reproCooldown = 4;
 
-  tempStressIntensity = 0.1;
+  tempStressIntensity = 0.09;
   baseMutationRate = 0.02;  // tasa basal no evolucionable (suelo garantizado de variación)
 
   // Estaciones
