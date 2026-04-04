@@ -101,11 +101,13 @@ export class WorldSpecies {
         const tempDiff = Math.abs(cell.env.temperature - newOrg.tempOpt);
         const tempPenalty = tempDiff * tempDiff * this.tempStressIntensity;
         newOrg.energy -= tempPenalty;
+        // C) la eficiencia de ganancia energética cae con tempDiff (afecta a herbívoros y depredadores)
+        const tempGainFactor = Math.max(0.05, 1 - tempDiff * this.tempStressIntensity * 15);
 
         // 4) comer
         const eaten = Math.min(cell.env.nutrient, 0.2);
         newCell.env.nutrient -= eaten;
-        newOrg.energy += eaten * 1.0;
+        newOrg.energy += eaten * tempGainFactor;
 
         // 5) muerte
         if (newOrg.energy <= 0 || newOrg.age > newOrg.maxAge) {
@@ -140,7 +142,7 @@ export class WorldSpecies {
                 // la presa escapa
               } else {
                 const efficiency = 0.4 + newOrg.predationIndex * 0.5;
-                newOrg.energy += victim.energy * efficiency;
+                newOrg.energy += victim.energy * efficiency * tempGainFactor;
                 // restos de la presa vuelven al suelo
                 victimCell.env.nutrient = Math.min(1, victimCell.env.nutrient + victim.energy * (1 - efficiency) * 0.4);
                 victimCell.org = null;
@@ -150,8 +152,10 @@ export class WorldSpecies {
           }
         }
         // 8) reproducción con camada variable
+        // B relajada) umbral de reproducción sube con tempDiff
+        const effectiveReproThreshold = this.reproThreshold + tempDiff * this.tempStressIntensity * 15;
         const canReproduce =
-          newOrg.energy > this.reproThreshold &&
+          newOrg.energy > effectiveReproThreshold &&
           (newOrg.reproCooldown ?? 0) <= 0 &&
           newOrg.age > 5;
 
