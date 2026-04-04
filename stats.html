@@ -95,7 +95,24 @@
       margin-top: 20px;
     }
 
-    #chart-title { color: chartreuse; margin-bottom: 8px; }
+    #chart-title { color: chartreuse; margin-bottom: 6px; }
+
+    #run-settings {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 20px;
+      font-size: 12px;
+      color: #aaa;
+      margin-bottom: 10px;
+      padding: 8px 10px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 4px;
+      max-width: 860px;
+    }
+    #run-settings .setting-group { display: flex; flex-direction: column; gap: 2px; }
+    #run-settings .setting-label { color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+    #run-settings .setting-val { color: #ccc; }
 
     #chart-canvas {
       background: #1a1a1a;
@@ -172,6 +189,7 @@
 
   <div id="chart-section">
     <h2 id="chart-title"></h2>
+    <div id="run-settings"></div>
     <canvas id="chart-canvas" width="860" height="480"></canvas>
     <div id="chart-legend"></div>
   </div>

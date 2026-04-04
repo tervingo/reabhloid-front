@@ -8,6 +8,7 @@ const chartTitle = document.getElementById("chart-title") as HTMLHeadingElement;
 const chartCanvas = document.getElementById("chart-canvas") as HTMLCanvasElement;
 const chartLegend = document.getElementById("chart-legend") as HTMLDivElement;
 const backBtn = document.getElementById("back-btn") as HTMLButtonElement;
+const runSettingsDiv = document.getElementById("run-settings") as HTMLDivElement;
 
 const MIN_POPULATION_FOR_CHART = 50;
 
@@ -20,6 +21,16 @@ tooltip.style.cssText = `
   white-space: nowrap; z-index: 100;
 `;
 document.body.appendChild(tooltip);
+
+interface RunSettings {
+  zoneBaseTemps: number[];
+  zoneRegen: number[];
+  seasonPeriod: number;
+  seasonAmplitude: number;
+  tempStressIntensity: number;
+  initialMutationRate: number;
+  reproThreshold: number;
+}
 
 interface Run {
   id: string;
@@ -173,6 +184,7 @@ async function showChart(run: Run) {
   backBtn.style.display = "inline-block";
   chartTitle.textContent = `Run ${run.id} — evolución de especies`;
   chartLegend.innerHTML = "";
+  runSettingsDiv.innerHTML = "";
 
   const ctx = chartCanvas.getContext("2d")!;
   ctx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
@@ -180,10 +192,35 @@ async function showChart(run: Run) {
   ctx.font = "14px sans-serif";
   ctx.fillText("Cargando datos...", 20, 30);
 
-  const res = await fetch(`${API}/runs/${run.id}/snapshots`);
-  const snapshots: Snapshot[] = await res.json();
+  const [snapsRes, runRes] = await Promise.all([
+    fetch(`${API}/runs/${run.id}/snapshots`),
+    fetch(`${API}/runs/${run.id}`),
+  ]);
+  const snapshots: Snapshot[] = await snapsRes.json();
+  const fullRun: Run & { settings?: RunSettings } = await runRes.json();
 
+  if (fullRun.settings) renderSettings(fullRun.settings);
   drawChart(ctx, snapshots);
+}
+
+function renderSettings(s: RunSettings) {
+  const t = s.zoneBaseTemps;
+  const r = s.zoneRegen;
+  const groups: Array<[string, string]> = [
+    ["Zona 0 (fría)",     `${(t[0]*50).toFixed(1)} ºC · regen ${r[0].toFixed(3)}`],
+    ["Zona 1 (templada)", `${(t[1]*50).toFixed(1)} ºC · regen ${r[1].toFixed(3)}`],
+    ["Zona 2 (caliente)", `${(t[2]*50).toFixed(1)} ºC · regen ${r[2].toFixed(3)}`],
+    ["Estaciones",        `periodo ${s.seasonPeriod} ticks · amplitud ±${(s.seasonAmplitude*50).toFixed(1)} ºC`],
+    ["Estrés térmico",    s.tempStressIntensity.toFixed(2)],
+    ["Mutación inicial",  s.initialMutationRate.toFixed(4)],
+    ["Umbral reproducción", s.reproThreshold.toFixed(2)],
+  ];
+  runSettingsDiv.innerHTML = groups.map(([label, val]) => `
+    <div class="setting-group">
+      <span class="setting-label">${label}</span>
+      <span class="setting-val">${val}</span>
+    </div>
+  `).join("");
 }
 
 function drawChart(ctx: CanvasRenderingContext2D, snapshots: Snapshot[]) {

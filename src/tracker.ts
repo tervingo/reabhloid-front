@@ -39,6 +39,7 @@ export class RunTracker {
         seasonAmplitude: w.seasonAmplitude,
         zoneBaseTemps: [...w.zoneBaseTemps],
         zoneRegen: [...w.zoneRegen],
+        tempStressIntensity: w.tempStressIntensity,
       },
     });
 
