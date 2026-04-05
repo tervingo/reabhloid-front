@@ -65,10 +65,10 @@ let isRunning = false;
 let simStatus = "en pausa";
 
 const END_REASON_LABELS: Record<string, string> = {
-  max_ticks:  "finalizada · límite alcanzado",
-  dominance:  "finalizada · dominancia",
-  extinction: "finalizada · extinción",
-  manual:     "finalizada · manual",
+  max_ticks:  "simulación finalizada · límite alcanzado",
+  dominance:  "simulación finalizada · dominancia",
+  extinction: "simulación finalizada · extinción",
+  manual:     "simulación finalizada · manual",
 };
 
 tickDelayInput.addEventListener("input", () => {
@@ -194,13 +194,13 @@ function attachListeners() {
 
   startBtn.addEventListener("click", () => {
     isRunning = true;
-    simStatus = "en curso";
+    simStatus = "simulación en curso";
     lastTime = performance.now();
   });
 
   pauseBtn.addEventListener("click", () => {
     isRunning = false;
-    simStatus = "en pausa";
+    simStatus = "simulación en pausa";
     updateUIAndDraw();
   });
 
@@ -238,7 +238,7 @@ function draw() {
   ctx.fillText(popText, 150, INFO_BAR_HEIGHT / 2);
   ctx.fillText(speciesText, 300, INFO_BAR_HEIGHT / 2);
 
-  const statusColor = simStatus.startsWith("finalizada") ? "#f88" : simStatus === "en curso" ? "#4fc" : "#fa4";
+  const statusColor = simStatus.startsWith("simulación finalizada") ? "#f88" : simStatus === "simulación en curso" ? "#4fc" : "#fa4";
   ctx.fillStyle = statusColor;
   ctx.textAlign = "right";
   ctx.fillText(simStatus, canvas.width - 8, INFO_BAR_HEIGHT / 2);
