@@ -44,7 +44,9 @@ const cellTempOptSpan = document.getElementById("cellTempOpt") as HTMLSpanElemen
 const cellEnergySpan = document.getElementById("cellEnergy") as HTMLSpanElement;
 const cellAgeSpan = document.getElementById("cellAge") as HTMLSpanElement;
 const cellMaxAgeSpan = document.getElementById("cellMaxAge") as HTMLSpanElement;
-const cellNutrientSpan = document.getElementById("cellNutrient") as HTMLSpanElement;
+const cellO2Span = document.getElementById("cellO2") as HTMLSpanElement;
+const cellCO2Span = document.getElementById("cellCO2") as HTMLSpanElement;
+const cellMetabolicSpan = document.getElementById("cellMetabolic") as HTMLSpanElement;
 const cellSpeciesSpan = document.getElementById("cellSpecies") as HTMLSpanElement;
 const cellPredationIndexSpan = document.getElementById("cellPredationIndex") as HTMLSpanElement;
 const speciesListDiv = document.getElementById("speciesList") as HTMLDivElement;
@@ -110,7 +112,8 @@ function updateInspectorFromMouse(event: MouseEvent) {
   }
 
   const cell = world.grid[y][x];
-  cellNutrientSpan.textContent = cell.env.nutrient.toFixed(3);
+  cellO2Span.textContent = cell.env.o2.toFixed(3);
+  cellCO2Span.textContent = cell.env.co2.toFixed(3);
   cellPosSpan.textContent = `${x}, ${y}`;
   cellZoneSpan.textContent = cell.env.zone.toString();
 
@@ -120,6 +123,7 @@ function updateInspectorFromMouse(event: MouseEvent) {
     cellEnergySpan.textContent = "-";
     cellAgeSpan.textContent = "-";
     cellMaxAgeSpan.textContent = "-";
+    cellMetabolicSpan.textContent = "-";
     if (cellSpeciesSpan) cellSpeciesSpan.textContent = "-";
     cellPredationIndexSpan.textContent = "-";
   } else {
@@ -130,8 +134,8 @@ function updateInspectorFromMouse(event: MouseEvent) {
     cellAgeSpan.textContent = org.age.toString();
     const daysPerTick = 1 / 24;
     const maxAgeDays = org.maxAge * daysPerTick;
-    cellMaxAgeSpan.textContent =
-      `${org.maxAge} ticks (~${maxAgeDays.toFixed(1)} días)`;
+    cellMaxAgeSpan.textContent = `${org.maxAge} ticks (~${maxAgeDays.toFixed(1)} días)`;
+    cellMetabolicSpan.textContent = org.metabolicType === "aerobic" ? "O₂→CO₂" : "CO₂→O₂";
     if (cellSpeciesSpan) cellSpeciesSpan.textContent = org.speciesId.toString();
     cellPredationIndexSpan.textContent = org.predationIndex.toFixed(2);
   }
@@ -145,7 +149,9 @@ function clearInspector() {
   cellEnergySpan.textContent = "-";
   cellAgeSpan.textContent = "-";
   cellMaxAgeSpan.textContent = "-";
-  cellNutrientSpan.textContent = "-";
+  cellO2Span.textContent = "-";
+  cellCO2Span.textContent = "-";
+  cellMetabolicSpan.textContent = "-";
   if (cellSpeciesSpan) cellSpeciesSpan.textContent = "-";
   cellPredationIndexSpan.textContent = "-";
 }
@@ -248,28 +254,14 @@ function draw() {
     for (let x = 0; x < GRID_WIDTH; x++) {
       const cell = world.grid[y][x];
 
-      const n = cell.env.nutrient;
-      let rBg = 0;
-      let gBg = 0;
-      let bBg = 0;
-
-      switch (cell.env.zone) {
-        case 0:
-          rBg = 0;
-          gBg = Math.round(20 + 40 * n);
-          bBg = Math.round(60 + 180 * n);
-          break;
-        case 1:
-          rBg = Math.round(20 + 40 * n);
-          gBg = Math.round(80 + 170 * n);
-          bBg = Math.round(20 + 40 * n);
-          break;
-        case 2:
-          rBg = Math.round(80 + 170 * n);
-          gBg = Math.round(20 + 40 * n);
-          bBg = Math.round(20 + 40 * n);
-          break;
-      }
+      // Fondo: O2 → azul, CO2 → rojo, mezcla → interpolación
+      const o2 = cell.env.o2;
+      const co2 = cell.env.co2;
+      // Base de zona para el brillo (fría/templada/cálida)
+      const zoneDim = cell.env.zone === 0 ? 0.6 : cell.env.zone === 1 ? 0.8 : 1.0;
+      const rBg = Math.round(Math.min(255, co2 * 160 * zoneDim));
+      const gBg = Math.round(Math.min(255, (o2 + co2) * 30 * zoneDim));
+      const bBg = Math.round(Math.min(255, o2 * 160 * zoneDim));
 
       ctx.fillStyle = `rgb(${rBg}, ${gBg}, ${bBg})`;
       ctx.fillRect(
@@ -299,6 +291,29 @@ function draw() {
           drawTriangle(ctx, cx, cy, size);
         } else {
           drawCross(ctx, cx, cy, size);
+        }
+
+        // Marcador metabólico: esquina superior izquierda
+        // aerobic (O2→CO2): punto blanco; anaerobic (CO2→O2): cruz blanca
+        {
+          const mx = x * CELL_SIZE + 2;
+          const my = INFO_BAR_HEIGHT + y * CELL_SIZE + 2;
+          const ms = CELL_SIZE * 0.18;
+          ctx.save();
+          ctx.fillStyle = "#fff";
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 1;
+          if (org.metabolicType === "aerobic") {
+            ctx.beginPath();
+            ctx.arc(mx + ms, my + ms, ms, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.beginPath();
+            ctx.moveTo(mx, my + ms); ctx.lineTo(mx + ms * 2, my + ms);
+            ctx.moveTo(mx + ms, my); ctx.lineTo(mx + ms, my + ms * 2);
+            ctx.stroke();
+          }
+          ctx.restore();
         }
 
         if (org.speciationMarkerTicks && org.speciationMarkerTicks > 0) {

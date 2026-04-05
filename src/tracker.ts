@@ -40,6 +40,7 @@ export class RunTracker {
         zoneBaseTemps: [...w.zoneBaseTemps],
         zoneRegen: [...w.zoneRegen],
         tempStressIntensity: w.tempStressIntensity,
+        worldType: w.worldType,
       },
     });
 
