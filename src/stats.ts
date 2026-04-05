@@ -62,6 +62,7 @@ interface SpeciesSnapshot {
   meanPredationIndex: number;
   meanMutationRate: number;
   meanMaxAge: number;
+  metabolicType?: "aerobic" | "anaerobic";
 }
 
 interface Snapshot {
@@ -387,15 +388,18 @@ function drawChart(ctx: CanvasRenderingContext2D, snapshots: Snapshot[]) {
     }
     if (entries.length === 0) return;
 
-    // Dibujar línea
+    // Dibujar línea (dashed para anaeróbicas)
+    const metabolicType = entries[0].entry.metabolicType ?? "aerobic";
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.8;
+    ctx.setLineDash(metabolicType === "anaerobic" ? [5, 4] : []);
     ctx.beginPath();
     ctx.moveTo(scaleX(entries[0].tick), scaleY(entries[0].entry.population));
     for (let i = 1; i < entries.length; i++) {
       ctx.lineTo(scaleX(entries[i].tick), scaleY(entries[i].entry.population));
     }
     ctx.stroke();
+    ctx.setLineDash([]);
 
     // Marcador de primer tick
     const first = entries[0];

@@ -500,6 +500,7 @@ function loop(timestamp: number) {
           speciesId: sp.id,
           population: sp.count,
           color: sp.color,
+          metabolicType: sp.metabolicType,
         }));
         liveChart.addSnapshot(world.tickCount, species);
       }

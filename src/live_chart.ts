@@ -6,6 +6,7 @@ interface SpEntry {
   speciesId: number;
   population: number;
   color: string;
+  metabolicType?: "aerobic" | "anaerobic";
 }
 
 interface HistoryPoint {
@@ -18,6 +19,7 @@ export class LiveChart {
   private ctx: CanvasRenderingContext2D;
   private history: HistoryPoint[] = [];
   private colorMap = new Map<number, string>();
+  private metabolicMap = new Map<number, "aerobic" | "anaerobic">();
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -27,15 +29,14 @@ export class LiveChart {
   reset() {
     this.history = [];
     this.colorMap.clear();
+    this.metabolicMap.clear();
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
   }
 
   addSnapshot(tick: number, species: SpEntry[]) {
-    // Registrar colores al vuelo desde los datos de entrada
     for (const sp of species) {
-      if (!this.colorMap.has(sp.speciesId)) {
-        this.colorMap.set(sp.speciesId, sp.color);
-      }
+      if (!this.colorMap.has(sp.speciesId)) this.colorMap.set(sp.speciesId, sp.color);
+      if (sp.metabolicType) this.metabolicMap.set(sp.speciesId, sp.metabolicType);
     }
     this.history.push({ tick, species });
     this.draw();
@@ -141,12 +142,14 @@ export class LiveChart {
 
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
+      ctx.setLineDash(this.metabolicMap.get(spId) === "anaerobic" ? [4, 3] : []);
       ctx.beginPath();
       ctx.moveTo(scaleX(points[0][0]), scaleY(points[0][1]));
       for (let i = 1; i < points.length; i++) {
         ctx.lineTo(scaleX(points[i][0]), scaleY(points[i][1]));
       }
       ctx.stroke();
+      ctx.setLineDash([]);
     }
 
     // Etiqueta tick actual

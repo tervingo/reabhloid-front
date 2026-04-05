@@ -158,14 +158,14 @@ export class RunTracker {
 
   private computeSpeciesStats() {
     const w = this.world;
-    type Acc = { tempOpt: number[]; predIdx: number[]; mutRate: number[]; maxAge: number[]; energy: number[]; zone: number[] };
+    type Acc = { tempOpt: number[]; predIdx: number[]; mutRate: number[]; maxAge: number[]; energy: number[]; zone: number[]; metabolicType: string };
     const acc = new Map<number, Acc>();
 
     for (let y = 0; y < 50; y++) {
       for (let x = 0; x < 50; x++) {
         const org = w.grid[y][x].org;
         if (!org) continue;
-        if (!acc.has(org.speciesId)) acc.set(org.speciesId, { tempOpt: [], predIdx: [], mutRate: [], maxAge: [], energy: [], zone: [] });
+        if (!acc.has(org.speciesId)) acc.set(org.speciesId, { tempOpt: [], predIdx: [], mutRate: [], maxAge: [], energy: [], zone: [], metabolicType: org.metabolicType });
         const a = acc.get(org.speciesId)!;
         a.tempOpt.push(org.tempOpt);
         a.predIdx.push(org.predationIndex);
@@ -186,6 +186,7 @@ export class RunTracker {
       meanEnergy: mean(a.energy),
       dominantZone: mode(a.zone),
       activePredators: a.predIdx.filter(p => p > w.predatorThreshold).length,
+      metabolicType: a.metabolicType,
     }));
   }
 

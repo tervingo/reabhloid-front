@@ -334,18 +334,22 @@ export class WorldSpecies {
     return id;
   }
 
-  getLiveSpeciesInfo(): Array<{ id: number; color: string; tempOpt: number; maxAge: number; predationIndex: number; count: number }> {
+  getLiveSpeciesInfo(): Array<{ id: number; color: string; tempOpt: number; maxAge: number; predationIndex: number; count: number; metabolicType: "aerobic" | "anaerobic" }> {
     const counts = new Map<number, number>();
+    const metabolicTypes = new Map<number, "aerobic" | "anaerobic">();
     for (let y = 0; y < GRID_HEIGHT; y++) {
       for (let x = 0; x < GRID_WIDTH; x++) {
         const org = this.grid[y][x].org;
-        if (org) counts.set(org.speciesId, (counts.get(org.speciesId) ?? 0) + 1);
+        if (org) {
+          counts.set(org.speciesId, (counts.get(org.speciesId) ?? 0) + 1);
+          if (!metabolicTypes.has(org.speciesId)) metabolicTypes.set(org.speciesId, org.metabolicType);
+        }
       }
     }
-    const result: Array<{ id: number; color: string; tempOpt: number; maxAge: number; predationIndex: number; count: number }> = [];
+    const result: Array<{ id: number; color: string; tempOpt: number; maxAge: number; predationIndex: number; count: number; metabolicType: "aerobic" | "anaerobic" }> = [];
     for (const [id, info] of this.speciesMap) {
       const count = counts.get(id);
-      if (count) result.push({ id, ...info, count });
+      if (count) result.push({ id, ...info, count, metabolicType: metabolicTypes.get(id) ?? "aerobic" });
     }
     result.sort((a, b) => a.id - b.id);
     return result;
