@@ -51,6 +51,7 @@ interface Run {
   dominantSpeciesId: number | null;
   comment: string;
   rating: number;  // 0 = sin valoración, 1-3 = estrellas
+  worldType?: string;
   finalBoard?: FinalCell[];
   settings?: RunSettings;
 }
@@ -142,9 +143,13 @@ function renderRunList(runs: Run[]) {
 
     const starsDisplay = renderStars(run.rating);
 
+    const worldBadge = run.worldType === "AEROBIC_WORLD"
+      ? `<span style="background:#1a4a2a;color:#4fc;border:1px solid #4fc;border-radius:3px;font-size:11px;padding:1px 6px;margin-left:8px">🌿 AERÓBICO</span>`
+      : "";
+
     card.innerHTML = `
       <div class="run-header">
-        <strong>${run.id}</strong>
+        <strong>${run.id}</strong>${worldBadge}
         <div class="run-actions">
           <button class="btn-view">Ver</button>
           <button class="btn-edit">Editar</button>
@@ -195,7 +200,7 @@ async function showChart(run: Run) {
   runsList.style.display = "none";
   chartSection.style.display = "block";
   backBtn.style.display = "inline-block";
-  chartTitle.textContent = `Run ${run.id} — evolución de especies`;
+  chartTitle.textContent = `Run ${run.id} — evolución de especies${run.worldType === "AEROBIC_WORLD" ? " 🌿" : ""}`;
   chartLegend.innerHTML = "";
   runSettingsDiv.innerHTML = "";
 
