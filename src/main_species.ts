@@ -201,6 +201,7 @@ function attachListeners() {
   pauseBtn.addEventListener("click", () => {
     isRunning = false;
     simStatus = "en pausa";
+    updateUIAndDraw();
   });
 
   restartBtn.addEventListener("click", async () => {
@@ -496,6 +497,7 @@ function loop(timestamp: number) {
               : "dominance";
             simStatus = END_REASON_LABELS[reason] ?? "finalizada";
             tracker!.endRun(reason);
+            updateUIAndDraw();
           }
         });
       }
