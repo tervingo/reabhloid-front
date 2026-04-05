@@ -117,7 +117,7 @@ export class WorldSpecies {
         // 4) metabolismo gaseoso: consume su gas, produce el opuesto
         const isAerobic = newOrg.metabolicType === "aerobic";
         const gasAvail = isAerobic ? newCell.env.o2 : newCell.env.co2;
-        const consumed = Math.min(gasAvail, 0.04);
+        const consumed = Math.min(gasAvail, 0.02);  // consumo de gas por tick
         if (isAerobic) {
           newCell.env.o2 = Math.max(0, newCell.env.o2 - consumed);
           newCell.env.co2 = Math.min(1, newCell.env.co2 + consumed * GAS_PRODUCE_RATIO);
