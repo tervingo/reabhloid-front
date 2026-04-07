@@ -4,9 +4,9 @@ import type { CellStateSpecies, OrganismSpecies, ZoneId } from "./types";
 
 const GAS_DIFFUSION = 0.05;    // fracción por tick entre celdas vecinas (0.05×8=0.4 < 1, estable)
 const GAS_PRODUCE_RATIO = 0.8; // fracción del gas consumido que se convierte en el gas opuesto
-const GAS_BORDER_REGEN = 0.3;  // reposición por tick en columnas de borde
+const GAS_BORDER_REGEN = 0.4;  // reposición por tick en columnas de borde
 const GAS_BORDER_WIDTH = 5;    // columnas de borde que actúan como fuente
-const GAS_ZONE_REGEN = 0.008;  // regeneración distribuida en toda la zona (no solo borde)
+const GAS_ZONE_REGEN = 0.009;  // regeneración distribuida en toda la zona (no solo borde)
 
 export class WorldSpecies {
   readonly worldType = "AEROBIC_WORLD";
@@ -54,8 +54,8 @@ export class WorldSpecies {
   seedSingleAncestor(initialMutationRate: number) {
     this.resetGridEmpty();
 
-    // Nace en la franja O2 pura (primer tercio), centro vertical
-    const x = Math.floor(GRID_WIDTH / 6);
+    // Nace en el centro
+    const x = Math.floor(GRID_WIDTH / 2);
     const y = Math.floor(GRID_HEIGHT / 2);
     const cell = this.grid[y][x];
     const tempOpt = this.baseTempForZone(cell.env.zone);
@@ -117,7 +117,7 @@ export class WorldSpecies {
         // 4) metabolismo gaseoso: consume su gas, produce el opuesto
         const isAerobic = newOrg.metabolicType === "aerobic";
         const gasAvail = isAerobic ? newCell.env.o2 : newCell.env.co2;
-        const consumed = Math.min(gasAvail, 0.02);  // consumo de gas por tick
+        const consumed = Math.min(gasAvail, 0.04);  // consumo de gas por tick
         if (isAerobic) {
           newCell.env.o2 = Math.max(0, newCell.env.o2 - consumed);
           newCell.env.co2 = Math.min(1, newCell.env.co2 + consumed * GAS_PRODUCE_RATIO);
@@ -297,14 +297,14 @@ export class WorldSpecies {
       for (let x = 0; x < GRID_WIDTH; x++) {
         let o2: number, co2: number;
         if (x < leftBound) {
-          o2 = 0.8 + Math.random() * 0.2;
+          o2 = 0.9 + Math.random() * 0.4;
           co2 = 0;
         } else if (x < rightBound) {
-          o2 = 0.4 + Math.random() * 0.2;
-          co2 = 0.4 + Math.random() * 0.2;
+          o2 = 0.4 + Math.random() * 0.4;
+          co2 = 0.4 + Math.random() * 0.4;
         } else {
           o2 = 0;
-          co2 = 0.8 + Math.random() * 0.2;
+          co2 = 0.9 + Math.random() * 0.4;
         }
         row.push({
           env: { temperature: baseTemp, o2, co2, zone, lastEatenTicks: 0 },
