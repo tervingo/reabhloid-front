@@ -71,7 +71,7 @@ export class WorldSpecies {
       mutationRate: initialMutationRate,
       reproThreshold: this.reproThreshold,
       reproCooldown: 0,
-      predationIndex: 0.5,
+      predationIndex: 1,
       metabolicType: "aerobic",
       speciesId: baseSpecies,
       founderId: baseSpecies,
@@ -106,7 +106,7 @@ export class WorldSpecies {
         }
 
         // 2) coste basal + coste metabólico por capacidad depredadora
-        newOrg.energy -= 0.01 + newOrg.predationIndex * 0.015;
+        newOrg.energy -= 0.01 + newOrg.predationIndex * 0.005;
 
         // 3) estrés térmico
         const tempDiff = Math.abs(cell.env.temperature - newOrg.tempOpt);
