@@ -5,7 +5,7 @@ import { GRID_HEIGHT } from "./types";
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 console.log("VITE_API_URL = ", API);
 const SNAPSHOT_INTERVAL = 100;
-const DOMINANCE_RATIO = 99.5;  // la dominante debe tener ≥99.5x más individuos que la segunda
+const DOMINANCE_RATIO = 95;  // la dominante debe tener ≥95x más individuos que la segunda
 const MIN_DOMINANT_POP = 500;  // debe tener al menos 500 células (20% del tablero)
 const MIN_TICKS_FOR_DOMINANCE = 5000;
 const MAX_TICKS = 20000;
