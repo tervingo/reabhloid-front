@@ -445,13 +445,14 @@ export class WorldSpecies {
     let diff = 0;
     const mu = parent.mutationRate + this.baseMutationRate;
 
-    if (Math.abs(g.tempOpt      - parent.tempOpt)      > 0.003) diff++;
-    if (Math.abs(g.mutationRate - parent.mutationRate)  > 0.0005) diff++;
-    if (Math.abs(g.divisionMass - parent.divisionMass)  > 0.05)  diff++;
-    if (Math.abs(g.attack       - parent.attack)        > 0.05)  diff++;
+    // Umbrales al ~60% de la escala de mutación de cada rasgo
+    if (Math.abs(g.tempOpt      - parent.tempOpt)      > 0.015) diff++;  // scale 0.025
+    if (Math.abs(g.mutationRate - parent.mutationRate)  > 0.003) diff++;  // scale 0.006
+    if (Math.abs(g.divisionMass - parent.divisionMass)  > 0.030) diff++;  // scale 0.05
+    if (Math.abs(g.attack       - parent.attack)        > 0.025) diff++;  // scale 0.04
 
     if (diff === 0) return false;
-    let baseP = diff === 1 ? 0.02 : diff === 2 ? 0.06 : 0.15;
+    let baseP = diff === 1 ? 0.01 : diff === 2 ? 0.02 : 0.05;
     const mFactor = Math.min(2, 0.2 + mu * 10);
     return Math.random() < Math.min(0.9, baseP * mFactor);
   }
