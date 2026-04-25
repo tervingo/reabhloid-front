@@ -34,7 +34,7 @@ export class RunTracker {
         gridWidth: 50,
         gridHeight: 50,
         initialMutationRate: w.speciesMap.get(1)?.mutationRate ?? 0,
-        reproThreshold: w.reproThreshold,
+        reproThreshold: w.speciesMap.get(1)?.divisionMass ?? 1.0,
         seasonPeriod: w.seasonPeriod,
         seasonAmplitude: w.seasonAmplitude,
         zoneBaseTemps: [...w.zoneBaseTemps],
@@ -53,8 +53,8 @@ export class RunTracker {
         parentSpeciesId: null,
         founderTraits: {
           tempOpt: founder.tempOpt,
-          maxAge: founder.maxAge,
-          predationIndex: founder.predationIndex,
+          divisionMass: founder.divisionMass,
+          attack: founder.attack,
           mutationRate: founder.mutationRate,
         },
         zone: 1,
@@ -122,7 +122,7 @@ export class RunTracker {
             speciesId: org.speciesId,
             energy: Math.round(org.energy * 100) / 100,
             tempOpt: Math.round(org.tempOpt * 1000) / 1000,
-            predationIndex: Math.round(org.predationIndex * 1000) / 1000,
+            predationIndex: Math.round(org.attack * 1000) / 1000,
           });
         }
       }
@@ -158,19 +158,19 @@ export class RunTracker {
 
   private computeSpeciesStats() {
     const w = this.world;
-    type Acc = { tempOpt: number[]; predIdx: number[]; mutRate: number[]; maxAge: number[]; energy: number[]; zone: number[]; metabolicType: string };
+    type Acc = { tempOpt: number[]; attack: number[]; mutRate: number[]; divisionMass: number[]; energy: number[]; zone: number[]; metabolicType: string };
     const acc = new Map<number, Acc>();
 
     for (let y = 0; y < 50; y++) {
       for (let x = 0; x < 50; x++) {
         const org = w.grid[y][x].org;
         if (!org) continue;
-        if (!acc.has(org.speciesId)) acc.set(org.speciesId, { tempOpt: [], predIdx: [], mutRate: [], maxAge: [], energy: [], zone: [], metabolicType: org.metabolicType });
+        if (!acc.has(org.speciesId)) acc.set(org.speciesId, { tempOpt: [], attack: [], mutRate: [], divisionMass: [], energy: [], zone: [], metabolicType: org.metabolicType });
         const a = acc.get(org.speciesId)!;
         a.tempOpt.push(org.tempOpt);
-        a.predIdx.push(org.predationIndex);
+        a.attack.push(org.attack);
         a.mutRate.push(org.mutationRate);
-        a.maxAge.push(org.maxAge);
+        a.divisionMass.push(org.divisionMass);
         a.energy.push(org.energy);
         a.zone.push(Math.floor(y / (GRID_HEIGHT / 3)));
       }
@@ -180,12 +180,12 @@ export class RunTracker {
       speciesId,
       population: a.tempOpt.length,
       meanTempOpt: mean(a.tempOpt),
-      meanPredationIndex: mean(a.predIdx),
+      meanPredationIndex: mean(a.attack),
       meanMutationRate: mean(a.mutRate),
-      meanMaxAge: mean(a.maxAge),
+      meanMaxAge: mean(a.divisionMass),
       meanEnergy: mean(a.energy),
       dominantZone: mode(a.zone),
-      activePredators: a.predIdx.filter(p => p > w.predatorThreshold).length,
+      activePredators: a.attack.filter((p: number) => p > w.predatorThreshold).length,
       metabolicType: a.metabolicType,
     }));
   }

@@ -1,42 +1,150 @@
 // src/world_species.ts
 import { GRID_WIDTH, GRID_HEIGHT } from "./types";
-import type { CellStateSpecies, OrganismSpecies, ZoneId } from "./types";
+import type { CellEnv, CellStateSpecies, OrganismSpecies, ZoneId } from "./types";
 
-const GAS_DIFFUSION = 0.05;    // fracción por tick entre celdas vecinas (0.05×8=0.4 < 1, estable)
-const GAS_PRODUCE_RATIO = 0.8; // fracción del gas consumido que se convierte en el gas opuesto
-const GAS_BORDER_REGEN = 0.4;  // reposición por tick en columnas de borde
-const GAS_BORDER_WIDTH = 5;    // columnas de borde que actúan como fuente
-const GAS_ZONE_REGEN = 0.009;  // regeneración distribuida en toda la zona (no solo borde)
+// --- Constantes de entorno ---
+const GAS_DIFFUSION    = 0.05;
+const GAS_PRODUCE_RATIO = 0.8;
+const GAS_BORDER_REGEN  = 0.4;
+const GAS_BORDER_WIDTH  = 5;
+const GAS_ZONE_REGEN    = 0.009;
 
+// --- Constantes de biología ---
+const ATTACK_THRESHOLD  = 0.2;   // ataque mínimo para intentar depredar
+const HUNGER_ENERGY     = 0.6;   // energía máxima para intentar depredar
+const MIN_PREY_POP      = 7;     // población mínima de una especie para poder ser depredada
+
+// --- Helpers puros ---
+
+function thermalPerformance(temp: number, tempOpt: number, breadth: number): number {
+  const z = (temp - tempOpt) / Math.max(0.02, breadth);
+  return Math.max(0, Math.exp(-z * z));
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+function rnd(lo: number, hi: number): number {
+  return lo + Math.random() * (hi - lo);
+}
+
+// --- Genome type (subconjunto heredable) ---
+interface Genome {
+  tempOpt: number;
+  tempBreadth: number;
+  uptakeRate: number;
+  maintenanceRate: number;
+  divisionMass: number;
+  attack: number;
+  defense: number;
+  motility: number;
+  mutationRate: number;
+  metabolicType: "aerobic" | "anaerobic";
+}
+
+function extractGenome(org: OrganismSpecies): Genome {
+  return {
+    tempOpt: org.tempOpt,
+    tempBreadth: org.tempBreadth,
+    uptakeRate: org.uptakeRate,
+    maintenanceRate: org.maintenanceRate,
+    divisionMass: org.divisionMass,
+    attack: org.attack,
+    defense: org.defense,
+    motility: org.motility,
+    mutationRate: org.mutationRate,
+    metabolicType: org.metabolicType,
+  };
+}
+
+function maybeMutateContinuous(
+  g: Genome,
+  key: keyof Genome,
+  mu: number,
+  scale: number,
+  lo: number,
+  hi: number
+) {
+  if (Math.random() < mu * 2) {
+    (g as unknown as Record<string, number>)[key] = clamp(
+      (g as unknown as Record<string, number>)[key] + (Math.random() * 2 - 1) * scale,
+      lo,
+      hi
+    );
+  }
+}
+
+
+function mutateGenome(parent: OrganismSpecies): Genome {
+  const g = extractGenome(parent);
+  const mu = g.mutationRate;
+
+  maybeMutateContinuous(g, "tempOpt",        mu,       0.025, 0,     1);
+  maybeMutateContinuous(g, "tempBreadth",    mu,       0.012, 0.03,  0.35);
+  maybeMutateContinuous(g, "uptakeRate",     mu,       0.04,  0.05,  2.0);
+  maybeMutateContinuous(g, "maintenanceRate",mu,       0.025, 0.005, 1.5);
+  maybeMutateContinuous(g, "divisionMass",   mu,       0.05,  0.3,   4.0);
+  maybeMutateContinuous(g, "attack",         mu,       0.04,  0,     1);
+  maybeMutateContinuous(g, "defense",        mu,       0.04,  0,     1);
+  maybeMutateContinuous(g, "motility",       mu,       0.04,  0,     1);
+  maybeMutateContinuous(g, "mutationRate",   mu * 0.3, 0.006, 0.001, 0.25);
+
+  if (Math.random() < mu * 0.05) {
+    g.metabolicType = g.metabolicType === "aerobic" ? "anaerobic" : "aerobic";
+  }
+
+  return g;
+}
+
+function expressPhenotype(g: Genome, parent: OrganismSpecies): OrganismSpecies {
+  return {
+    age: 0,
+    mass: 0,
+    energy: 0,
+    damage: 0,
+    starvation: 0,
+    cellCycle: 0,
+    generation: parent.generation + 1,
+    speciesId: parent.speciesId,
+    founderId: parent.founderId,
+    ...g,
+  };
+}
+
+// ============================================================
 export class WorldSpecies {
-  readonly worldType = "AEROBIC_WORLD";
+  readonly worldType = "AEROBIC_WORLD_V2";
 
   grid: CellStateSpecies[][];
   tickCount = 0;
-  zoneBaseTemps: number[] = [0.2, 0.5, 0.7]; // 0–1
-  zoneRegen: number[] = [0.018, 0.030, 0.008]; // ya no se usa para gases, pero se mantiene por la UI
+  zoneBaseTemps: number[] = [0.2, 0.5, 0.7];
+  zoneRegen: number[] = [0.018, 0.030, 0.008]; // mantenido por la UI
 
-  predatorThreshold = 0.3;
+  tempStressIntensity = 0.09; // mantenido por la UI (no afecta al nuevo modelo directamente)
 
-  reproThreshold = 1.2;
-  reproCost = 0.9;
-  reproChildEnergy = 0.5;
-  reproCooldown = 4;
-
-  tempStressIntensity = 0.09;
   baseMutationRate = 0.02;
+  seasonPeriod     = 1000;
+  seasonAmplitude  = 0.06;
 
-  // Estaciones
-  seasonPeriod = 1000;
-  seasonAmplitude = 0.06;
+  predatorThreshold = ATTACK_THRESHOLD; // usado por la UI para el marcador rojo
+
+  private speciesPopulation = new Map<number, number>();
 
   // Especies
   speciesCounter = 1;
-  speciesMap = new Map<number, { color: string; tempOpt: number; maxAge: number; predationIndex: number; mutationRate: number; parentSpeciesId: number | null }>();
+  speciesMap = new Map<number, {
+    color: string;
+    tempOpt: number;
+    attack: number;
+    divisionMass: number;
+    mutationRate: number;
+    parentSpeciesId: number | null;
+  }>();
 
   onNewSpecies?: (event: {
     speciesId: number; parentSpeciesId: number | null;
-    founderTraits: { tempOpt: number; maxAge: number; predationIndex: number; mutationRate: number };
+    founderTraits: { tempOpt: number; divisionMass: number; attack: number; mutationRate: number };
     zone: number; x: number; y: number;
   }) => void;
 
@@ -54,32 +162,60 @@ export class WorldSpecies {
   seedSingleAncestor(initialMutationRate: number) {
     this.resetGridEmpty();
 
-    // Nace en el centro
-    const x = Math.floor(GRID_WIDTH / 2);
+    const x = Math.floor(GRID_WIDTH / 4);   // zona O2, lejos del borde
     const y = Math.floor(GRID_HEIGHT / 2);
     const cell = this.grid[y][x];
     const tempOpt = this.baseTempForZone(cell.env.zone);
 
-    const baseSpecies = this.createSpecies({ tempOpt, maxAge: 80, predationIndex: 0.5, mutationRate: initialMutationRate, parentSpeciesId: null });
-
-    // El ancestro nace en la franja de O2 puro como aeróbico
-    cell.org = {
-      energy: 1,
-      age: 0,
-      maxAge: 80,
+    const baseSpecies = this.createSpecies({
       tempOpt,
+      attack: 0.5,
+      divisionMass: 1.0,
       mutationRate: initialMutationRate,
-      reproThreshold: this.reproThreshold,
-      reproCooldown: 0,
-      predationIndex: 1,
+      parentSpeciesId: null,
+    });
+
+    cell.org = {
+      age: 0,
+      mass: 0.5,
+      energy: 0.8,
+      damage: 0,
+      starvation: 0,
+      cellCycle: 0,
+      tempOpt,
+      tempBreadth: 0.12,
+      uptakeRate: 0.8,
+      maintenanceRate: 0.02,
+      divisionMass: 1.0,
+      mutationRate: initialMutationRate,
       metabolicType: "aerobic",
+      attack: 0.5,
+      defense: 0.3,
+      motility: 0.2,
       speciesId: baseSpecies,
       founderId: baseSpecies,
+      generation: 0,
     };
   }
 
+  // ---- Tick principal ----
+
+  step() {
+    this.tickCount++;
+    this.updateEnvironment();
+    this.updateOrganisms();
+  }
+
   private updateOrganisms() {
-    const newGrid = this.grid.map(row =>
+    // Conteo de población por especie (para proteger minorías de depredación)
+    this.speciesPopulation.clear();
+    for (let y = 0; y < GRID_HEIGHT; y++)
+      for (let x = 0; x < GRID_WIDTH; x++) {
+        const id = this.grid[y][x].org?.speciesId;
+        if (id !== undefined) this.speciesPopulation.set(id, (this.speciesPopulation.get(id) ?? 0) + 1);
+      }
+
+    const nextGrid = this.grid.map(row =>
       row.map(cell => ({
         ...cell,
         env: { ...cell.env },
@@ -89,187 +225,295 @@ export class WorldSpecies {
 
     for (let y = 0; y < GRID_HEIGHT; y++) {
       for (let x = 0; x < GRID_WIDTH; x++) {
-        const cell = this.grid[y][x];
-        const org = cell.org;
-        if (!org) continue;
+        const current = this.grid[y][x].org;
+        if (!current) continue;
 
-        const newCell = newGrid[y][x];
-        let newOrg = newCell.org;
-        if (!newOrg) continue;
+        let org = { ...current };
+        const env = nextGrid[y][x].env;
 
-        // 1) edad
-        newOrg.age += 1;
-
-        // marcador especiación
-        if (newOrg.speciationMarkerTicks && newOrg.speciationMarkerTicks > 0) {
-          newOrg.speciationMarkerTicks -= 1;
+        // 1. envejecer
+        org.age += 1;
+        if (org.speciationMarkerTicks && org.speciationMarkerTicks > 0) {
+          org.speciationMarkerTicks -= 1;
         }
 
-        // 2) coste basal + coste metabólico por capacidad depredadora
-        newOrg.energy -= 0.01 + newOrg.predationIndex * 0.005;
+        // 2. metabolismo
+        this.processMetabolism(org, env);
 
-        // 3) estrés térmico
-        const tempDiff = Math.abs(cell.env.temperature - newOrg.tempOpt);
-        const tempPenalty = tempDiff * tempDiff * this.tempStressIntensity;
-        newOrg.energy -= tempPenalty;
-        const tempGainFactor = Math.max(0.05, 1 - tempDiff * this.tempStressIntensity * 15);
-
-        // 4) metabolismo gaseoso: consume su gas, produce el opuesto
-        const isAerobic = newOrg.metabolicType === "aerobic";
-        const gasAvail = isAerobic ? newCell.env.o2 : newCell.env.co2;
-        const consumed = Math.min(gasAvail, 0.04);  // consumo de gas por tick
-        if (isAerobic) {
-          newCell.env.o2 = Math.max(0, newCell.env.o2 - consumed);
-          newCell.env.co2 = Math.min(1, newCell.env.co2 + consumed * GAS_PRODUCE_RATIO);
+        // 3. movimiento
+        let tx = x, ty = y;
+        const moved = this.maybeMove(x, y, org, nextGrid);
+        if (moved) {
+          [tx, ty] = moved;
+          nextGrid[y][x].org = null;
+          nextGrid[ty][tx].org = org;
         } else {
-          newCell.env.co2 = Math.max(0, newCell.env.co2 - consumed);
-          newCell.env.o2 = Math.min(1, newCell.env.o2 + consumed * GAS_PRODUCE_RATIO);
+          nextGrid[y][x].org = org;
         }
-        newOrg.energy += consumed * tempGainFactor;
 
-        // 5) muerte
-        if (newOrg.energy <= 0 || newOrg.age > newOrg.maxAge) {
-          newCell.org = null;
+        // 4. depredación
+        this.maybePredate(tx, ty, org, nextGrid);
+
+        // 5. ciclo celular
+        this.advanceCellCycle(org, nextGrid[ty][tx].env);
+
+        // 6. muerte
+        if (this.shouldDie(org, nextGrid[ty][tx].env)) {
+          this.onDeath(org, nextGrid[ty][tx].env);
+          nextGrid[ty][tx].org = null;
           continue;
         }
 
-        newOrg = newCell.org;
-        if (!newOrg) continue;
-
-        // 6) cooldown reproducción
-        if (newOrg.reproCooldown && newOrg.reproCooldown > 0) {
-          newOrg.reproCooldown -= 1;
-        }
-
-        // 7) predación
-        const hungerThreshold = 1.3;
-        if (newOrg.predationIndex > this.predatorThreshold && newOrg.energy < hungerThreshold) {
-          const victimPos = this.findPreyWithPolicy(x, y, newGrid, newOrg);
-          if (victimPos) {
-            const [vx, vy] = victimPos;
-            const victimCell = newGrid[vy][vx];
-            const victim = victimCell.org;
-            if (victim) {
-              const escapeChance = victim.predationIndex * 0.6;
-              if (Math.random() < escapeChance) {
-                // la presa escapa
-              } else {
-                const efficiency = 0.4 + newOrg.predationIndex * 0.5;
-                newOrg.energy += victim.energy * efficiency * tempGainFactor;
-                victimCell.org = null;
-                victimCell.env.lastEatenTicks = 5;
-              }
-            }
+        // 7. división
+        if (org.cellCycle >= 1) {
+          const divided = this.divideIfReady(tx, ty, nextGrid, org);
+          if (!divided) {
+            nextGrid[ty][tx].org = org;
           }
-        }
-
-        // 8) reproducción — bloqueada si no hay gas suficiente
-        const gasForRepro = isAerobic ? newCell.env.o2 : newCell.env.co2;
-        const effectiveReproThreshold = this.reproThreshold + tempDiff * this.tempStressIntensity * 15;
-        const canReproduce =
-          newOrg.energy > effectiveReproThreshold &&
-          (newOrg.reproCooldown ?? 0) <= 0 &&
-          newOrg.age > 5 &&
-          gasForRepro > 0.05;
-
-        if (canReproduce) {
-          const maxLitter =
-            newOrg.energy > this.reproThreshold * 3 ? 3 :
-            newOrg.energy > this.reproThreshold * 2 ? 2 : 1;
-          let placed = 0;
-          while (placed < maxLitter && newOrg.energy > this.reproCost) {
-            const pos = this.findEmptyNeighbor(x, y, newGrid);
-            if (!pos) break;
-            const [nx, ny] = pos;
-            const child = this.mutateOrganism(newOrg, nx, ny);
-            child.energy = this.reproChildEnergy;
-            newOrg.energy -= this.reproCost;
-            newGrid[ny][nx].org = child;
-            placed++;
-          }
-          if (placed > 0) newOrg.reproCooldown = this.reproCooldown;
+          // si divided=true, las hijas ya están en nextGrid (madre borrada dentro)
+        } else {
+          nextGrid[ty][tx].org = org;
         }
       }
     }
 
-    this.grid = newGrid;
+    this.grid = nextGrid;
   }
 
-  private mutateOrganism(parent: OrganismSpecies, x: number, y: number): OrganismSpecies {
-    const r = parent.mutationRate + this.baseMutationRate;
-    const jitter = (v: number, scale: number) =>
-      v + (Math.random() * 2 - 1) * scale * r;
+  // ---- Metabolismo ----
 
-    // Posible cambio de tipo metabólico (baja probabilidad)
-    const metabolicFlip = Math.random() < r * 0.3;
-    const metabolicType = metabolicFlip
-      ? (parent.metabolicType === "aerobic" ? "anaerobic" : "aerobic")
-      : parent.metabolicType;
+  private processMetabolism(org: OrganismSpecies, env: CellEnv) {
+    const thermal = thermalPerformance(env.temperature, org.tempOpt, org.tempBreadth);
 
-    let child: OrganismSpecies = {
-      energy: parent.energy,
-      age: 0,
-      maxAge: Math.max(20, Math.round(jitter(parent.maxAge, 10))),
-      tempOpt: Math.max(0, Math.min(1, jitter(parent.tempOpt, 0.1))),
-      mutationRate: Math.max(0.001, Math.min(0.3, jitter(parent.mutationRate, 0.6))),
-      reproThreshold: Math.max(0.5, jitter(parent.reproThreshold, 0.4)),
-      reproCooldown: 0,
-      predationIndex: Math.max(0, Math.min(1, jitter(parent.predationIndex, 0.6))),
-      metabolicType,
-      speciesId: parent.speciesId,
-      founderId: parent.founderId,
+    // Captación de gas: sustituye al recurso (Fase 2 añadirá resource)
+    const isAerobic = org.metabolicType === "aerobic";
+    const gasAvail  = isAerobic ? env.o2 : env.co2;
+    const maxUptake = org.uptakeRate * thermal * 0.08;
+    const consumed  = Math.min(gasAvail, maxUptake);
+
+    if (isAerobic) {
+      env.o2  = Math.max(0, env.o2  - consumed);
+      env.co2 = Math.min(1, env.co2 + consumed * GAS_PRODUCE_RATIO);
+    } else {
+      env.co2 = Math.max(0, env.co2 - consumed);
+      env.o2  = Math.min(1, env.o2  + consumed * GAS_PRODUCE_RATIO);
+    }
+
+    const pathwayEff  = isAerobic ? 1.0 : 0.65;
+    const assimilation = consumed * pathwayEff * thermal;
+
+    const maintenance =
+      org.maintenanceRate +
+      0.015 * org.attack +
+      0.008 * org.motility +
+      0.02  * org.damage;
+
+    const net = assimilation - maintenance;
+
+    if (net >= 0) {
+      org.energy    += net * 0.55;
+      org.mass      += net * 0.45;
+      org.starvation = Math.max(0, org.starvation - 0.04);
+    } else {
+      const deficit = -net;
+      const fromEnergy = Math.min(org.energy, deficit * 0.7);
+      org.energy -= fromEnergy;
+      const remaining = deficit - fromEnergy;
+      if (remaining > 0) {
+        org.mass      -= remaining * 0.5;
+        org.starvation += remaining;
+      }
+    }
+
+    // daño por temperatura extrema
+    const thermalDmg = Math.max(0, 1 - thermal) * 0.004;
+    org.damage = Math.max(0, org.damage + thermalDmg - 0.0005);
+  }
+
+  // ---- Ciclo celular ----
+
+  private advanceCellCycle(org: OrganismSpecies, env: CellEnv) {
+    if (
+      org.mass >= org.divisionMass * 0.7 &&
+      org.energy >= 0.2 * org.divisionMass &&
+      org.damage < 0.8
+    ) {
+      const thermal = thermalPerformance(env.temperature, org.tempOpt, org.tempBreadth);
+      org.cellCycle += 0.07 * thermal;
+    }
+  }
+
+  // ---- División binaria ----
+
+  private divideIfReady(
+    x: number, y: number,
+    grid: CellStateSpecies[][],
+    org: OrganismSpecies
+  ): boolean {
+    if (org.cellCycle < 1) return false;
+
+    const pos = this.findEmptyNeighbor(x, y, grid);
+    if (!pos) {
+      // sin espacio: penaliza y retrasa
+      org.energy   -= 0.08;
+      org.damage   += 0.04;
+      org.cellCycle = 0.6;
+      return false;
+    }
+
+    const [nx, ny] = pos;
+    const [childA, childB] = this.makeDaughters(org, x, y);
+
+    grid[y][x].org   = childA;
+    grid[ny][nx].org = childB;
+    return true;
+  }
+
+  private makeDaughters(
+    parent: OrganismSpecies,
+    x: number, y: number
+  ): [OrganismSpecies, OrganismSpecies] {
+    const gA = mutateGenome(parent);
+    const gB = mutateGenome(parent);
+
+    const splitM = rnd(0.47, 0.53);
+    const splitE = rnd(0.47, 0.53);
+
+    const baseA = expressPhenotype(gA, parent);
+    const baseB = expressPhenotype(gB, parent);
+
+    const childA: OrganismSpecies = {
+      ...baseA,
+      mass:       parent.mass   * splitM,
+      energy:     parent.energy * splitE,
+      damage:     parent.damage * 0.5,
+      starvation: 0,
+      cellCycle:  0,
     };
 
-    // El flip metabólico siempre especiará
-    if (metabolicFlip || this.shouldSpeciate(parent, child)) {
-      const newSpeciesId = this.createSpecies({
-        tempOpt: child.tempOpt,
-        maxAge: child.maxAge,
-        predationIndex: child.predationIndex,
-        mutationRate: child.mutationRate,
+    const childB: OrganismSpecies = {
+      ...baseB,
+      mass:       parent.mass   * (1 - splitM),
+      energy:     parent.energy * (1 - splitE),
+      damage:     parent.damage * 0.5,
+      starvation: 0,
+      cellCycle:  0,
+    };
+
+    this.maybeSpeciate(parent, childA, gA, x, y);
+    this.maybeSpeciate(parent, childB, gB, x, y);
+
+    return [childA, childB];
+  }
+
+  // ---- Especiación (sin cambio de lógica respecto a Fase 0) ----
+
+  private maybeSpeciate(
+    parent: OrganismSpecies,
+    child: OrganismSpecies,
+    g: Genome,
+    x: number, y: number
+  ) {
+    const metabolicFlip = g.metabolicType !== parent.metabolicType;
+    if (metabolicFlip || this.shouldSpeciate(parent, g)) {
+      const newId = this.createSpecies({
+        tempOpt: g.tempOpt,
+        attack: g.attack,
+        divisionMass: g.divisionMass,
+        mutationRate: g.mutationRate,
         parentSpeciesId: parent.speciesId,
       });
-      child = { ...child, speciesId: newSpeciesId, founderId: newSpeciesId, speciationMarkerTicks: 10 };
+      child.speciesId = newId;
+      child.founderId = newId;
+      child.speciationMarkerTicks = 10;
       const zone = this.zoneForY(y);
       this.onNewSpecies?.({
-        speciesId: newSpeciesId,
+        speciesId: newId,
         parentSpeciesId: parent.speciesId,
-        founderTraits: { tempOpt: child.tempOpt, maxAge: child.maxAge, predationIndex: child.predationIndex, mutationRate: child.mutationRate },
+        founderTraits: {
+          tempOpt: g.tempOpt,
+          divisionMass: g.divisionMass,
+          attack: g.attack,
+          mutationRate: g.mutationRate,
+        },
         zone, x, y,
       });
     }
-
-    return child;
   }
 
-  private shouldSpeciate(parent: OrganismSpecies, child: OrganismSpecies): boolean {
-    let diffCount = 0;
-    const m = parent.mutationRate + this.baseMutationRate;
+  private shouldSpeciate(parent: OrganismSpecies, g: Genome): boolean {
+    let diff = 0;
+    const mu = parent.mutationRate + this.baseMutationRate;
 
-    if (Math.abs(child.tempOpt - parent.tempOpt) > 0.003) diffCount++;
-    if (Math.abs(child.mutationRate - parent.mutationRate) > 0.0005) diffCount++;
-    if (Math.abs(child.maxAge - parent.maxAge) > 1.5) diffCount++;
-    if (Math.abs(child.reproThreshold - parent.reproThreshold) > 0.03) diffCount++;
+    if (Math.abs(g.tempOpt      - parent.tempOpt)      > 0.003) diff++;
+    if (Math.abs(g.mutationRate - parent.mutationRate)  > 0.0005) diff++;
+    if (Math.abs(g.divisionMass - parent.divisionMass)  > 0.05)  diff++;
+    if (Math.abs(g.attack       - parent.attack)        > 0.05)  diff++;
 
-    if (diffCount === 0) return false;
-
-    let baseP = 0;
-    if (diffCount === 1) baseP = 0.02;
-    else if (diffCount === 2) baseP = 0.06;
-    else baseP = 0.15;
-
-    const mFactor = Math.min(2, 0.2 + m * 10);
-    const p = Math.min(0.9, baseP * mFactor);
-    return Math.random() < p;
+    if (diff === 0) return false;
+    let baseP = diff === 1 ? 0.02 : diff === 2 ? 0.06 : 0.15;
+    const mFactor = Math.min(2, 0.2 + mu * 10);
+    return Math.random() < Math.min(0.9, baseP * mFactor);
   }
 
-  private findPreyWithPolicy(
+  // ---- Muerte ----
+
+  private shouldDie(org: OrganismSpecies, _env: CellEnv): boolean {
+    if (org.mass   <= 0.05) return true;
+    if (org.energy < -0.3)  return true;
+    if (org.damage >= 1.5)  return true;
+    if (org.starvation > 2) return true;
+    return false;
+  }
+
+  private onDeath(_org: OrganismSpecies, env: CellEnv) {
+    env.lastDeathTicks = 4;
+  }
+
+  // ---- Depredación ----
+
+  private maybePredate(
     x: number, y: number,
-    grid: CellStateSpecies[][],
-    predator: OrganismSpecies
+    predator: OrganismSpecies,
+    grid: CellStateSpecies[][]
+  ) {
+    if (predator.attack < ATTACK_THRESHOLD) return;
+    if (predator.age < 15) return;
+    if (predator.energy > predator.divisionMass * HUNGER_ENERGY) return;
+
+    predator.energy -= 0.02; // coste de búsqueda
+
+    const preyPos = this.choosePreyCandidate(x, y, predator, grid);
+    if (!preyPos) return;
+
+    const [px, py] = preyPos;
+    const prey = grid[py][px].org;
+    if (!prey) return;
+
+    const successProb = clamp(
+      0.15 + 0.45 * predator.attack - 0.30 * prey.defense
+          + 0.10 * predator.motility - 0.10 * prey.motility,
+      0, 1
+    );
+
+    if (Math.random() < successProb) {
+      const gain = prey.mass * 0.7 * (0.35 + 0.35 * predator.attack);
+      predator.energy += gain * 0.6;
+      predator.mass   += gain * 0.2;
+      grid[py][px].org = null;
+      grid[py][px].env.lastEatenTicks = 5;
+    } else {
+      predator.damage += 0.03;
+      prey.damage     += 0.01;
+    }
+  }
+
+  private choosePreyCandidate(
+    x: number, y: number,
+    predator: OrganismSpecies,
+    grid: CellStateSpecies[][]
   ): [number, number] | null {
-    const candidates: [number, number][] = [];
-    const factor = 0.3 + (2 - 0.3) * predator.predationIndex;
+    const candidates: Array<[number, number, number]> = [];
 
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
@@ -277,98 +521,64 @@ export class WorldSpecies {
         const nx = x + dx, ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= GRID_WIDTH || ny >= GRID_HEIGHT) continue;
         const prey = grid[ny][nx].org;
-        if (!prey || prey.speciesId === predator.speciesId) continue;
-        if (prey.energy <= predator.energy * factor) candidates.push([nx, ny]);
+        if (!prey) continue;
+        if (prey.speciesId === predator.speciesId) continue;  // sin canibalismo
+        if ((this.speciesPopulation.get(prey.speciesId) ?? 0) < MIN_PREY_POP) continue;
+
+        const score = (prey.mass * 0.6 + prey.energy * 0.4) / Math.max(0.1, prey.defense);
+        if (score > 0.15) candidates.push([nx, ny, score]);
       }
     }
+
     if (candidates.length === 0) return null;
-    return candidates[Math.floor(Math.random() * candidates.length)];
-  }
-
-  private initGrid() {
-    // Columnas de gas: izquierda O2, centro mixto, derecha CO2
-    const leftBound = Math.floor(GRID_WIDTH / 3);
-    const rightBound = Math.floor(2 * GRID_WIDTH / 3);
-
-    for (let y = 0; y < GRID_HEIGHT; y++) {
-      const row: CellStateSpecies[] = [];
-      const zone = this.zoneForY(y);
-      const baseTemp = this.baseTempForZone(zone);
-      for (let x = 0; x < GRID_WIDTH; x++) {
-        let o2: number, co2: number;
-        if (x < leftBound) {
-          o2 = 0.9 + Math.random() * 0.4;
-          co2 = 0;
-        } else if (x < rightBound) {
-          o2 = 0.4 + Math.random() * 0.4;
-          co2 = 0.4 + Math.random() * 0.4;
-        } else {
-          o2 = 0;
-          co2 = 0.9 + Math.random() * 0.4;
-        }
-        row.push({
-          env: { temperature: baseTemp, o2, co2, zone, lastEatenTicks: 0 },
-          org: null,
-        });
-      }
-      this.grid.push(row);
+    const total = candidates.reduce((s, c) => s + c[2], 0);
+    let r = Math.random() * total;
+    for (const [cx, cy, sc] of candidates) {
+      r -= sc;
+      if (r <= 0) return [cx, cy];
     }
+    return [candidates[0][0], candidates[0][1]];
   }
 
-  private zoneForY(y: number): ZoneId {
-    const h = GRID_HEIGHT;
-    if (y < h / 3) return 0;
-    if (y < (2 * h) / 3) return 1;
-    return 2;
-  }
+  // ---- Movimiento ----
 
-  private baseTempForZone(zone: ZoneId): number {
-    return this.zoneBaseTemps[zone];
-  }
+  private maybeMove(
+    x: number, y: number,
+    org: OrganismSpecies,
+    grid: CellStateSpecies[][]
+  ): [number, number] | null {
+    if (Math.random() > org.motility * 0.25) return null;
 
-  private createSpecies(traits: { tempOpt: number; maxAge: number; predationIndex: number; mutationRate: number; parentSpeciesId: number | null }): number {
-    const id = this.speciesCounter++;
-    const hue = (id * 157) % 360;
-    const color = `hsl(${hue}, 90%, 50%)`;
-    this.speciesMap.set(id, { color, ...traits });
-    return id;
-  }
+    const candidates: Array<[number, number]> = [];
+    let bestScore = -Infinity;
+    let best: [number, number] | null = null;
 
-  getLiveSpeciesInfo(): Array<{ id: number; color: string; tempOpt: number; maxAge: number; predationIndex: number; count: number; metabolicType: "aerobic" | "anaerobic" }> {
-    const counts = new Map<number, number>();
-    const metabolicTypes = new Map<number, "aerobic" | "anaerobic">();
-    for (let y = 0; y < GRID_HEIGHT; y++) {
-      for (let x = 0; x < GRID_WIDTH; x++) {
-        const org = this.grid[y][x].org;
-        if (org) {
-          counts.set(org.speciesId, (counts.get(org.speciesId) ?? 0) + 1);
-          if (!metabolicTypes.has(org.speciesId)) metabolicTypes.set(org.speciesId, org.metabolicType);
-        }
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= GRID_WIDTH || ny >= GRID_HEIGHT) continue;
+        if (grid[ny][nx].org) continue;
+        const env = grid[ny][nx].env;
+        const thermal = thermalPerformance(env.temperature, org.tempOpt, org.tempBreadth);
+        const gas = org.metabolicType === "aerobic" ? env.o2 : env.co2;
+        const score = gas * 0.6 + thermal * 0.4;
+        candidates.push([nx, ny]);
+        if (score > bestScore) { bestScore = score; best = [nx, ny]; }
       }
     }
-    const result: Array<{ id: number; color: string; tempOpt: number; maxAge: number; predationIndex: number; count: number; metabolicType: "aerobic" | "anaerobic" }> = [];
-    for (const [id, info] of this.speciesMap) {
-      const count = counts.get(id);
-      if (count) result.push({ id, ...info, count, metabolicType: metabolicTypes.get(id) ?? "aerobic" });
-    }
-    result.sort((a, b) => a.id - b.id);
-    return result;
+
+    if (!best || candidates.length === 0) return null;
+    org.energy -= 0.005 + 0.015 * org.motility;
+    return best;
   }
 
-  step() {
-    this.tickCount++;
-    this.updateEnvironment();
-    this.updateOrganisms();
-  }
+  // ---- Entorno ----
 
-  getActualZoneTemp(zone: ZoneId): number {
-    const seasonal = this.seasonAmplitude * Math.sin(2 * Math.PI * this.tickCount / this.seasonPeriod);
-    return this.zoneBaseTemps[zone] + seasonal;
-  }
+  step_env() { this.updateEnvironment(); }
 
   private updateEnvironment() {
-    // Difusión de gases entre celdas vecinas
-    const dO2 = Array.from({ length: GRID_HEIGHT }, () => new Float32Array(GRID_WIDTH));
+    const dO2  = Array.from({ length: GRID_HEIGHT }, () => new Float32Array(GRID_WIDTH));
     const dCO2 = Array.from({ length: GRID_HEIGHT }, () => new Float32Array(GRID_WIDTH));
 
     for (let y = 0; y < GRID_HEIGHT; y++) {
@@ -393,23 +603,50 @@ export class WorldSpecies {
         env.o2  = Math.max(0, Math.min(1, env.o2  + dO2[y][x]));
         env.co2 = Math.max(0, Math.min(1, env.co2 + dCO2[y][x]));
 
-        // Reposición en bordes: izquierda genera O2, derecha genera CO2
         if (x < GAS_BORDER_WIDTH) {
           env.o2 = Math.min(1, env.o2 + GAS_BORDER_REGEN);
         } else if (x < GRID_WIDTH / 2) {
-          // Zona O2: regeneración distribuida suave
           env.o2 = Math.min(1, env.o2 + GAS_ZONE_REGEN);
         }
         if (x >= GRID_WIDTH - GAS_BORDER_WIDTH) {
           env.co2 = Math.min(1, env.co2 + GAS_BORDER_REGEN);
         } else if (x >= GRID_WIDTH / 2) {
-          // Zona CO2: regeneración distribuida suave
           env.co2 = Math.min(1, env.co2 + GAS_ZONE_REGEN);
         }
 
         env.temperature = this.getActualZoneTemp(env.zone);
         if (env.lastEatenTicks > 0) env.lastEatenTicks -= 1;
+        if (env.lastDeathTicks > 0) env.lastDeathTicks -= 1;
       }
+    }
+  }
+
+  // ---- Helpers de grid ----
+
+  private initGrid() {
+    const leftBound  = Math.floor(GRID_WIDTH / 3);
+    const rightBound = Math.floor(2 * GRID_WIDTH / 3);
+
+    for (let y = 0; y < GRID_HEIGHT; y++) {
+      const row: CellStateSpecies[] = [];
+      const zone    = this.zoneForY(y);
+      const baseTemp = this.baseTempForZone(zone);
+
+      for (let x = 0; x < GRID_WIDTH; x++) {
+        let o2: number, co2: number;
+        if (x < leftBound) {
+          o2 = 0.9 + Math.random() * 0.1; co2 = 0;
+        } else if (x < rightBound) {
+          o2 = 0.4 + Math.random() * 0.4; co2 = 0.4 + Math.random() * 0.4;
+        } else {
+          o2 = 0; co2 = 0.9 + Math.random() * 0.1;
+        }
+        row.push({
+          env: { temperature: baseTemp, o2, co2, zone, lastEatenTicks: 0, lastDeathTicks: 0 },
+          org: null,
+        });
+      }
+      this.grid.push(row);
     }
   }
 
@@ -427,28 +664,39 @@ export class WorldSpecies {
     return candidates[Math.floor(Math.random() * candidates.length)];
   }
 
-  getTraitStats() {
-    const temps: number[] = [];
-    const agesMax: number[] = [];
-    for (let y = 0; y < GRID_HEIGHT; y++) {
-      for (let x = 0; x < GRID_WIDTH; x++) {
-        const org = this.grid[y][x].org;
-        if (!org) continue;
-        temps.push(org.tempOpt);
-        agesMax.push(org.maxAge);
-      }
-    }
-    const tempStats = meanAndStd(temps);
-    const ageStats = meanAndStd(agesMax);
-    return { tempMean: tempStats.mean, tempStd: tempStats.std, maxAgeMean: ageStats.mean, count: temps.length };
+  private zoneForY(y: number): ZoneId {
+    if (y < GRID_HEIGHT / 3) return 0;
+    if (y < (2 * GRID_HEIGHT) / 3) return 1;
+    return 2;
+  }
+
+  private baseTempForZone(zone: ZoneId): number {
+    return this.zoneBaseTemps[zone];
+  }
+
+  private createSpecies(traits: {
+    tempOpt: number; attack: number; divisionMass: number;
+    mutationRate: number; parentSpeciesId: number | null;
+  }): number {
+    const id  = this.speciesCounter++;
+    const hue = (id * 157) % 360;
+    this.speciesMap.set(id, { color: `hsl(${hue}, 90%, 50%)`, ...traits });
+    return id;
+  }
+
+  // ---- API pública ----
+
+  getActualZoneTemp(zone: ZoneId): number {
+    const seasonal = this.seasonAmplitude * Math.sin(2 * Math.PI * this.tickCount / this.seasonPeriod);
+    return this.zoneBaseTemps[zone] + seasonal;
   }
 
   getPopulation(): number {
-    let count = 0;
+    let n = 0;
     for (let y = 0; y < GRID_HEIGHT; y++)
       for (let x = 0; x < GRID_WIDTH; x++)
-        if (this.grid[y][x].org) count++;
-    return count;
+        if (this.grid[y][x].org) n++;
+    return n;
   }
 
   getLiveSpeciesCount(): number {
@@ -460,12 +708,48 @@ export class WorldSpecies {
       }
     return seen.size;
   }
-}
 
-function meanAndStd(values: number[]): { mean: number; std: number } {
-  if (values.length === 0) return { mean: 0, std: 0 };
-  const mean = values.reduce((s, v) => s + v, 0) / values.length;
-  if (values.length === 1) return { mean, std: 0 };
-  const variance = values.reduce((s, v) => s + (v - mean) * (v - mean), 0) / (values.length - 1);
-  return { mean, std: Math.sqrt(variance) };
+  getLiveSpeciesInfo(): Array<{
+    id: number; color: string; tempOpt: number; attack: number;
+    divisionMass: number; count: number; metabolicType: "aerobic" | "anaerobic";
+  }> {
+    const counts  = new Map<number, number>();
+    const metTypes = new Map<number, "aerobic" | "anaerobic">();
+
+    for (let y = 0; y < GRID_HEIGHT; y++)
+      for (let x = 0; x < GRID_WIDTH; x++) {
+        const org = this.grid[y][x].org;
+        if (org) {
+          counts.set(org.speciesId, (counts.get(org.speciesId) ?? 0) + 1);
+          if (!metTypes.has(org.speciesId)) metTypes.set(org.speciesId, org.metabolicType);
+        }
+      }
+
+    const result: Array<{
+      id: number; color: string; tempOpt: number; attack: number;
+      divisionMass: number; count: number; metabolicType: "aerobic" | "anaerobic";
+    }> = [];
+
+    for (const [id, info] of this.speciesMap) {
+      const count = counts.get(id);
+      if (count) result.push({
+        id, color: info.color, tempOpt: info.tempOpt,
+        attack: info.attack, divisionMass: info.divisionMass,
+        count, metabolicType: metTypes.get(id) ?? "aerobic",
+      });
+    }
+    result.sort((a, b) => a.id - b.id);
+    return result;
+  }
+
+  getTraitStats() {
+    const temps: number[] = [];
+    for (let y = 0; y < GRID_HEIGHT; y++)
+      for (let x = 0; x < GRID_WIDTH; x++) {
+        const org = this.grid[y][x].org;
+        if (org) temps.push(org.tempOpt);
+      }
+    const m = temps.length ? temps.reduce((a, b) => a + b, 0) / temps.length : 0;
+    return { tempMean: m, tempStd: 0, maxAgeMean: 0, count: temps.length };
+  }
 }

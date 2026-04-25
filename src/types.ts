@@ -6,24 +6,40 @@ export type ZoneId = 0 | 1 | 2;
 
 export interface CellEnv {
   temperature: number;
-  o2: number;   // oxígeno disponible (0–1)
-  co2: number;  // CO2 disponible (0–1)
+  o2: number;
+  co2: number;
   zone: ZoneId;
-  lastEatenTicks: number;
+  lastEatenTicks: number;  // >0: murió por depredación hace N ticks
+  lastDeathTicks: number;  // >0: murió por causa natural hace N ticks
 }
 
 export interface OrganismSpecies {
-  energy: number;
+  // estado dinámico
   age: number;
-  maxAge: number;
+  mass: number;
+  energy: number;
+  damage: number;
+  starvation: number;
+  cellCycle: number;
+
+  // fisiología heredable
   tempOpt: number;
+  tempBreadth: number;
+  uptakeRate: number;
+  maintenanceRate: number;
+  divisionMass: number;
   mutationRate: number;
-  reproThreshold: number;
-  reproCooldown: number;
-  predationIndex: number;   // 0=herbívoro puro, 1=carnívoro puro
-  metabolicType: "aerobic" | "anaerobic";  // aerobic = O2→CO2, anaerobic = CO2→O2
+  metabolicType: "aerobic" | "anaerobic";
+
+  // ecología trófica
+  attack: number;
+  defense: number;
+  motility: number;
+
+  // genealogía
   speciesId: number;
   founderId: number;
+  generation: number;
   speciationMarkerTicks?: number;
 }
 

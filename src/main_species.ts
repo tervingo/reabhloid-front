@@ -48,7 +48,12 @@ const cellO2Span = document.getElementById("cellO2") as HTMLSpanElement;
 const cellCO2Span = document.getElementById("cellCO2") as HTMLSpanElement;
 const cellMetabolicSpan = document.getElementById("cellMetabolic") as HTMLSpanElement;
 const cellSpeciesSpan = document.getElementById("cellSpecies") as HTMLSpanElement;
-const cellPredationIndexSpan = document.getElementById("cellPredationIndex") as HTMLSpanElement;
+const cellMassSpan     = document.getElementById("cellMass")     as HTMLSpanElement;
+const cellDamageSpan   = document.getElementById("cellDamage")   as HTMLSpanElement;
+const cellCycleSpan    = document.getElementById("cellCycle")    as HTMLSpanElement;
+const cellAttackSpan   = document.getElementById("cellAttack")   as HTMLSpanElement;
+const cellDefenseSpan  = document.getElementById("cellDefense")  as HTMLSpanElement;
+const cellMotilitySpan = document.getElementById("cellMotility") as HTMLSpanElement;
 const speciesListDiv = document.getElementById("speciesList") as HTMLDivElement;
 
 const CELL_SIZE = canvas.width / GRID_WIDTH;
@@ -125,19 +130,27 @@ function updateInspectorFromMouse(event: MouseEvent) {
     cellMaxAgeSpan.textContent = "-";
     cellMetabolicSpan.textContent = "-";
     if (cellSpeciesSpan) cellSpeciesSpan.textContent = "-";
-    cellPredationIndexSpan.textContent = "-";
+    cellMassSpan.textContent = "-";
+    cellDamageSpan.textContent = "-";
+    cellCycleSpan.textContent = "-";
+    cellAttackSpan.textContent = "-";
+    cellDefenseSpan.textContent = "-";
+    cellMotilitySpan.textContent = "-";
   } else {
     const org = cell.org;
     cellAliveSpan.textContent = "sí";
     cellTempOptSpan.textContent = (org.tempOpt * 50).toFixed(1) + " ºC";
-    cellEnergySpan.textContent = org.energy.toFixed(2);
+    cellEnergySpan.textContent = org.energy.toFixed(3);
     cellAgeSpan.textContent = org.age.toString();
-    const daysPerTick = 1 / 24;
-    const maxAgeDays = org.maxAge * daysPerTick;
-    cellMaxAgeSpan.textContent = `${org.maxAge} ticks (~${maxAgeDays.toFixed(1)} días)`;
+    cellMaxAgeSpan.textContent = `div:${org.divisionMass.toFixed(2)}`;
     cellMetabolicSpan.textContent = org.metabolicType === "aerobic" ? "O₂→CO₂" : "CO₂→O₂";
     if (cellSpeciesSpan) cellSpeciesSpan.textContent = org.speciesId.toString();
-    cellPredationIndexSpan.textContent = org.predationIndex.toFixed(2);
+    cellMassSpan.textContent = org.mass.toFixed(3);
+    cellDamageSpan.textContent = org.damage.toFixed(3);
+    cellCycleSpan.textContent = org.cellCycle.toFixed(2);
+    cellAttackSpan.textContent = org.attack.toFixed(2);
+    cellDefenseSpan.textContent = org.defense.toFixed(2);
+    cellMotilitySpan.textContent = org.motility.toFixed(2);
   }
 }
 
@@ -153,7 +166,12 @@ function clearInspector() {
   cellCO2Span.textContent = "-";
   cellMetabolicSpan.textContent = "-";
   if (cellSpeciesSpan) cellSpeciesSpan.textContent = "-";
-  cellPredationIndexSpan.textContent = "-";
+  cellMassSpan.textContent = "-";
+  cellDamageSpan.textContent = "-";
+  cellCycleSpan.textContent = "-";
+  cellAttackSpan.textContent = "-";
+  cellDefenseSpan.textContent = "-";
+  cellMotilitySpan.textContent = "-";
 }
 
 function updateParamsFromUI() {
@@ -244,6 +262,12 @@ function draw() {
   ctx.fillText(popText, 150, INFO_BAR_HEIGHT / 2);
   ctx.fillText(speciesText, 300, INFO_BAR_HEIGHT / 2);
 
+  ctx.fillStyle = "#7df";
+  ctx.font = "bold 13px monospace";
+  ctx.fillText("v2", 430, INFO_BAR_HEIGHT / 2);
+  ctx.font = "16px monospace";
+  ctx.fillStyle = "#ffffff";
+
   const statusColor = simStatus.startsWith("simulación finalizada") ? "#f88" : simStatus === "simulación en curso" ? "#4fc" : "#fa4";
   ctx.fillStyle = statusColor;
   ctx.textAlign = "right";
@@ -276,7 +300,7 @@ function draw() {
         const speciesInfo = world.speciesMap.get(org.speciesId);
         ctx.fillStyle = speciesInfo ? speciesInfo.color : "#ffffff";
 
-        const ageRatio = org.maxAge > 0 ? org.age / org.maxAge : 0;
+        const ageRatio = org.cellCycle;
         const cx = x * CELL_SIZE + CELL_SIZE / 2;
         const cy = INFO_BAR_HEIGHT + y * CELL_SIZE + CELL_SIZE / 2;
         const size = CELL_SIZE * 0.35;
@@ -333,7 +357,7 @@ function draw() {
           ctx.restore();
         }
 
-        if (org.predationIndex > world.predatorThreshold) {
+        if (org.attack > world.predatorThreshold) {
           ctx.save();
           ctx.strokeStyle = "red";
           ctx.lineWidth = 1.5;
@@ -347,20 +371,28 @@ function draw() {
         }
       }
 
-      if (!cell.org && cell.env.lastEatenTicks && cell.env.lastEatenTicks > 0) {
+      if (!cell.org && cell.env.lastEatenTicks > 0) {
         const cx = x * CELL_SIZE + CELL_SIZE / 2;
         const cy = INFO_BAR_HEIGHT + y * CELL_SIZE + CELL_SIZE / 2;
         const size = CELL_SIZE * 0.35;
-
         ctx.save();
-        ctx.strokeStyle = "orangeRed";
+        ctx.strokeStyle = "#f44";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(cx - size, cy - size);
-        ctx.lineTo(cx + size, cy + size);
-        ctx.moveTo(cx - size, cy + size);
-        ctx.lineTo(cx + size, cy - size);
+        ctx.moveTo(cx - size, cy - size); ctx.lineTo(cx + size, cy + size);
+        ctx.moveTo(cx - size, cy + size); ctx.lineTo(cx + size, cy - size);
         ctx.stroke();
+        ctx.restore();
+      }
+
+      if (!cell.org && cell.env.lastDeathTicks > 0) {
+        const cx = x * CELL_SIZE + CELL_SIZE / 2;
+        const cy = INFO_BAR_HEIGHT + y * CELL_SIZE + CELL_SIZE / 2;
+        ctx.save();
+        ctx.fillStyle = "orange";
+        ctx.beginPath();
+        ctx.arc(cx, cy, CELL_SIZE * 0.22, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
       }
     }
@@ -461,7 +493,7 @@ function updateUIAndDraw() {
   speciesListDiv.innerHTML = liveSpecies.map(sp =>
     `<div style="display:flex;align-items:center;gap:5px;margin:2px 0">` +
     `<span style="display:inline-block;width:10px;height:10px;background:${sp.color};flex-shrink:0;border-radius:2px"></span>` +
-    `<span>#${sp.id}->${sp.count} &nbsp;T:${(sp.tempOpt * 50).toFixed(1)}ºC &nbsp;A:${sp.maxAge} &nbsp;P:${sp.predationIndex.toFixed(2)}</span>` +
+    `<span>#${sp.id}→${sp.count} &nbsp;T:${(sp.tempOpt * 50).toFixed(1)}ºC &nbsp;dM:${sp.divisionMass.toFixed(2)} &nbsp;Atk:${sp.attack.toFixed(2)}</span>` +
     `</div>`
   ).join('');
 
