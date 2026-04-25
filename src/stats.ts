@@ -85,24 +85,10 @@ interface Marker {
 let activeMouseHandler: ((e: MouseEvent) => void) | null = null;
 
 async function loadRuns() {
-  const res = await fetch(`${API}/runs`);
-  const allRuns: Run[] = await res.json();
-
-  // Filtrar runs sin ninguna especie que haya llegado a 50 individuos y borrarlos
-  const validRuns: Run[] = [];
-  for (const run of allRuns) {
-    const snapsRes = await fetch(`${API}/runs/${run.id}/snapshots`);
-    const snapshots: Snapshot[] = await snapsRes.json();
-    const hasRelevant = snapshots.some(snap =>
-      snap.species.some(sp => sp.population >= MIN_POPULATION_FOR_CHART)
-    );
-    if (hasRelevant) {
-      validRuns.push(run);
-    } else {
-      await fetch(`${API}/runs/${run.id}`, { method: "DELETE" });
-    }
-  }
-
+  const res = await fetch(
+    `${API}/runs?min_pop=${MIN_POPULATION_FOR_CHART}&cleanup=true`
+  );
+  const validRuns: Run[] = await res.json();
   loading.remove();
   renderRunList(validRuns);
 }
