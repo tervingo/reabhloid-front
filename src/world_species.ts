@@ -18,6 +18,14 @@ const ATTACK_THRESHOLD  = 0.2;   // ataque mínimo para intentar depredar
 const HUNGER_ENERGY     = 0.6;   // energía máxima para intentar depredar
 const MIN_PREY_POP      = 7;     // población mínima de una especie para poder ser depredada
 
+// --- Constantes de especiación (Fase 3) ---
+const LINEAGE_THRESHOLD    = 0.10;  // distancia genómica para abrir linaje candidato
+const SPECIATION_THRESHOLD = 0.22;  // distancia media para promover linaje a especie
+const LINEAGE_MIN_MEMBERS  = 25;    // miembros mínimos para promover
+const LINEAGE_MIN_TICKS    = 200;   // ticks mínimos de persistencia para promover
+const LINEAGE_FAIL_TICKS   = 400;   // ticks máximos antes de descartar por fracaso
+const LINEAGE_FAIL_MEMBERS = 5;     // miembros mínimos para no ser descartado
+
 // --- Helpers puros ---
 
 function thermalPerformance(temp: number, tempOpt: number, breadth: number): number {
@@ -31,6 +39,17 @@ function clamp(v: number, lo: number, hi: number): number {
 
 function rnd(lo: number, hi: number): number {
   return lo + Math.random() * (hi - lo);
+}
+
+// --- Linaje candidato (Fase 3) ---
+interface LineageInfo {
+  lineageId:       number;
+  parentSpeciesId: number;
+  founderTick:     number;
+  founderGenome:   Genome;
+  memberCount:     number;
+  meanDistance:    number;
+  occupiedZones:   Set<number>;
 }
 
 // --- Genome type (subconjunto heredable) ---
@@ -111,9 +130,21 @@ function expressPhenotype(g: Genome, parent: OrganismSpecies): OrganismSpecies {
     cellCycle: 0,
     generation: parent.generation + 1,
     speciesId: parent.speciesId,
+    lineageId: parent.lineageId,
     founderId: parent.founderId,
     ...g,
   };
+}
+
+function genomeDistance(a: Genome, b: Genome): number {
+  const metaboFlip = a.metabolicType !== b.metabolicType ? 1.5 : 0;
+  return (
+    Math.abs(a.tempOpt      - b.tempOpt)      * 2.0 +
+    Math.abs(a.attack       - b.attack)        * 1.0 +
+    Math.abs(a.divisionMass - b.divisionMass)  / 3.7 +
+    Math.abs(a.uptakeRate   - b.uptakeRate)    / 1.95 +
+    metaboFlip
+  );
 }
 
 // ============================================================
@@ -134,6 +165,11 @@ export class WorldSpecies {
   predatorThreshold = ATTACK_THRESHOLD; // usado por la UI para el marcador rojo
 
   private speciesPopulation = new Map<number, number>();
+
+  // Linajes candidatos (Fase 3)
+  private lineageCounter    = 0;
+  private candidateLineages = new Map<number, LineageInfo>();
+  private speciesReferenceGenomes = new Map<number, Genome>();
 
   // Especies
   speciesCounter = 1;
@@ -161,31 +197,20 @@ export class WorldSpecies {
     this.grid = [];
     this.initGrid();
     this.tickCount = 0;
+    this.candidateLineages.clear();
+    this.speciesReferenceGenomes.clear();
+    this.lineageCounter = 0;
   }
 
   seedSingleAncestor(initialMutationRate: number) {
     this.resetGridEmpty();
 
-    const x = Math.floor(GRID_WIDTH / 4);   // zona O2, lejos del borde
+    const x = Math.floor(GRID_WIDTH / 4);
     const y = Math.floor(GRID_HEIGHT / 2);
     const cell = this.grid[y][x];
     const tempOpt = this.baseTempForZone(cell.env.zone);
 
-    const baseSpecies = this.createSpecies({
-      tempOpt,
-      attack: 0.5,
-      divisionMass: 1.0,
-      mutationRate: initialMutationRate,
-      parentSpeciesId: null,
-    });
-
-    cell.org = {
-      age: 0,
-      mass: 0.5,
-      energy: 0.8,
-      damage: 0,
-      starvation: 0,
-      cellCycle: 0,
+    const ancestorGenome: Genome = {
       tempOpt,
       tempBreadth: 0.12,
       uptakeRate: 0.8,
@@ -196,7 +221,26 @@ export class WorldSpecies {
       attack: 0.5,
       defense: 0.3,
       motility: 0.2,
+    };
+
+    const baseSpecies = this.createSpecies({
+      tempOpt,
+      attack: 0.5,
+      divisionMass: 1.0,
+      mutationRate: initialMutationRate,
+      parentSpeciesId: null,
+    }, ancestorGenome);
+
+    cell.org = {
+      age: 0,
+      mass: 0.5,
+      energy: 0.8,
+      damage: 0,
+      starvation: 0,
+      cellCycle: 0,
+      ...ancestorGenome,
       speciesId: baseSpecies,
+      lineageId: baseSpecies,
       founderId: baseSpecies,
       generation: 0,
     };
@@ -208,6 +252,7 @@ export class WorldSpecies {
     this.tickCount++;
     this.updateEnvironment();
     this.updateOrganisms();
+    this.updateSpeciation();
   }
 
   private updateOrganisms() {
@@ -378,7 +423,7 @@ export class WorldSpecies {
     }
 
     const [nx, ny] = pos;
-    const [childA, childB] = this.makeDaughters(org, x, y);
+    const [childA, childB] = this.makeDaughters(org);
 
     grid[y][x].org   = childA;
     grid[ny][nx].org = childB;
@@ -386,8 +431,7 @@ export class WorldSpecies {
   }
 
   private makeDaughters(
-    parent: OrganismSpecies,
-    x: number, y: number
+    parent: OrganismSpecies
   ): [OrganismSpecies, OrganismSpecies] {
     const gA = mutateGenome(parent);
     const gB = mutateGenome(parent);
@@ -416,61 +460,127 @@ export class WorldSpecies {
       cellCycle:  0,
     };
 
-    this.maybeSpeciate(parent, childA, gA, x, y);
-    this.maybeSpeciate(parent, childB, gB, x, y);
+    this.assignLineage(parent, childA, gA);
+    this.assignLineage(parent, childB, gB);
 
     return [childA, childB];
   }
 
-  // ---- Especiación (sin cambio de lógica respecto a Fase 0) ----
+  // ---- Especiación por linajes candidatos (Fase 3) ----
 
-  private maybeSpeciate(
-    parent: OrganismSpecies,
-    child: OrganismSpecies,
-    g: Genome,
-    x: number, y: number
-  ) {
-    const metabolicFlip = g.metabolicType !== parent.metabolicType;
-    if (metabolicFlip || this.shouldSpeciate(parent, g)) {
-      const newId = this.createSpecies({
-        tempOpt: g.tempOpt,
-        attack: g.attack,
-        divisionMass: g.divisionMass,
-        mutationRate: g.mutationRate,
-        parentSpeciesId: parent.speciesId,
-      });
-      child.speciesId = newId;
-      child.founderId = newId;
-      child.speciationMarkerTicks = 10;
-      const zone = this.zoneForY(y);
-      this.onNewSpecies?.({
-        speciesId: newId,
-        parentSpeciesId: parent.speciesId,
-        founderTraits: {
-          tempOpt: g.tempOpt,
-          divisionMass: g.divisionMass,
-          attack: g.attack,
-          mutationRate: g.mutationRate,
-        },
-        zone, x, y,
-      });
+  private assignLineage(parent: OrganismSpecies, child: OrganismSpecies, childGenome: Genome): void {
+    // Hijos de organismos ya en un linaje candidato lo heredan directamente
+    if (parent.lineageId !== parent.speciesId) {
+      child.lineageId = parent.lineageId;
+      return;
+    }
+
+    const refGenome = this.speciesReferenceGenomes.get(parent.speciesId);
+    if (!refGenome) return;
+
+    const d = genomeDistance(childGenome, refGenome);
+    if (d < LINEAGE_THRESHOLD) return;  // dentro del linaje principal, hereda lineageId del padre
+
+    // Abre un nuevo linaje candidato
+    const newLineageId = ++this.lineageCounter;
+    this.candidateLineages.set(newLineageId, {
+      lineageId:       newLineageId,
+      parentSpeciesId: parent.speciesId,
+      founderTick:     this.tickCount,
+      founderGenome:   { ...childGenome },
+      memberCount:     0,
+      meanDistance:    d,
+      occupiedZones:   new Set(),
+    });
+    child.lineageId = newLineageId;
+  }
+
+  private updateSpeciation(): void {
+    if (this.candidateLineages.size === 0) return;
+
+    // Un solo recorrido del grid para acumular estadísticas de todos los linajes
+    type Stats = { count: number; sumDist: number; zones: Set<number>; firstX: number; firstY: number };
+    const stats = new Map<number, Stats>();
+    for (const lid of this.candidateLineages.keys()) {
+      stats.set(lid, { count: 0, sumDist: 0, zones: new Set(), firstX: -1, firstY: -1 });
+    }
+
+    for (let y = 0; y < GRID_HEIGHT; y++) {
+      for (let x = 0; x < GRID_WIDTH; x++) {
+        const org = this.grid[y][x].org;
+        if (!org) continue;
+        const s = stats.get(org.lineageId);
+        if (!s) continue;
+        const lineage = this.candidateLineages.get(org.lineageId)!;
+        const ref = this.speciesReferenceGenomes.get(lineage.parentSpeciesId);
+        s.count++;
+        if (ref) s.sumDist += genomeDistance(extractGenome(org), ref);
+        s.zones.add(this.grid[y][x].env.zone);
+        if (s.firstX < 0) { s.firstX = x; s.firstY = y; }
+      }
+    }
+
+    for (const [lid, lineage] of this.candidateLineages) {
+      const s = stats.get(lid)!;
+      const persistedTicks = this.tickCount - lineage.founderTick;
+      const meanDist = s.count > 0 ? s.sumDist / s.count : 0;
+
+      lineage.memberCount  = s.count;
+      lineage.meanDistance = meanDist;
+      lineage.occupiedZones = s.zones;
+
+      const qualifies =
+        s.count        >= LINEAGE_MIN_MEMBERS &&
+        persistedTicks >= LINEAGE_MIN_TICKS   &&
+        meanDist       >= SPECIATION_THRESHOLD &&
+        s.zones.size   >= 1;
+
+      if (qualifies) {
+        this.promoteLineage(lid, lineage, s.firstX, s.firstY);
+        continue;
+      }
+
+      const extinct = s.count === 0;
+      const failed  = persistedTicks > LINEAGE_FAIL_TICKS && s.count < LINEAGE_FAIL_MEMBERS;
+      if (extinct || failed) this.candidateLineages.delete(lid);
     }
   }
 
-  private shouldSpeciate(parent: OrganismSpecies, g: Genome): boolean {
-    let diff = 0;
-    const mu = parent.mutationRate + this.baseMutationRate;
+  private promoteLineage(lid: number, lineage: LineageInfo, firstX: number, firstY: number): void {
+    const newSpeciesId = this.createSpecies({
+      tempOpt:         lineage.founderGenome.tempOpt,
+      attack:          lineage.founderGenome.attack,
+      divisionMass:    lineage.founderGenome.divisionMass,
+      mutationRate:    lineage.founderGenome.mutationRate,
+      parentSpeciesId: lineage.parentSpeciesId,
+    }, lineage.founderGenome);
 
-    // Umbrales al ~60% de la escala de mutación de cada rasgo
-    if (Math.abs(g.tempOpt      - parent.tempOpt)      > 0.015) diff++;  // scale 0.025
-    if (Math.abs(g.mutationRate - parent.mutationRate)  > 0.003) diff++;  // scale 0.006
-    if (Math.abs(g.divisionMass - parent.divisionMass)  > 0.030) diff++;  // scale 0.05
-    if (Math.abs(g.attack       - parent.attack)        > 0.025) diff++;  // scale 0.04
+    // Reasigna todos los miembros del linaje a la nueva especie
+    for (let y = 0; y < GRID_HEIGHT; y++) {
+      for (let x = 0; x < GRID_WIDTH; x++) {
+        const org = this.grid[y][x].org;
+        if (!org || org.lineageId !== lid) continue;
+        org.speciesId = newSpeciesId;
+        org.lineageId = newSpeciesId;
+        org.founderId = newSpeciesId;
+        org.speciationMarkerTicks = 10;
+      }
+    }
 
-    if (diff === 0) return false;
-    let baseP = diff === 1 ? 0.01 : diff === 2 ? 0.02 : 0.05;
-    const mFactor = Math.min(2, 0.2 + mu * 10);
-    return Math.random() < Math.min(0.9, baseP * mFactor);
+    const zone = firstX >= 0 ? this.zoneForY(firstY) : 0;
+    this.onNewSpecies?.({
+      speciesId:       newSpeciesId,
+      parentSpeciesId: lineage.parentSpeciesId,
+      founderTraits: {
+        tempOpt:      lineage.founderGenome.tempOpt,
+        divisionMass: lineage.founderGenome.divisionMass,
+        attack:       lineage.founderGenome.attack,
+        mutationRate: lineage.founderGenome.mutationRate,
+      },
+      zone, x: firstX, y: firstY,
+    });
+
+    this.candidateLineages.delete(lid);
   }
 
   // ---- Muerte ----
@@ -723,10 +833,11 @@ export class WorldSpecies {
   private createSpecies(traits: {
     tempOpt: number; attack: number; divisionMass: number;
     mutationRate: number; parentSpeciesId: number | null;
-  }): number {
+  }, refGenome?: Genome): number {
     const id  = this.speciesCounter++;
     const hue = (id * 157) % 360;
     this.speciesMap.set(id, { color: `hsl(${hue}, 90%, 50%)`, ...traits });
+    if (refGenome) this.speciesReferenceGenomes.set(id, { ...refGenome });
     return id;
   }
 

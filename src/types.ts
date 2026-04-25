@@ -40,6 +40,7 @@ export interface OrganismSpecies {
 
   // genealogía
   speciesId: number;
+  lineageId: number;           // linaje candidato (= speciesId si está en el linaje principal)
   founderId: number;
   generation: number;
   speciationMarkerTicks?: number;

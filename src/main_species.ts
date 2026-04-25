@@ -49,7 +49,8 @@ const cellCO2Span      = document.getElementById("cellCO2")      as HTMLSpanElem
 const cellResourceSpan = document.getElementById("cellResource") as HTMLSpanElement;
 const cellWasteSpan    = document.getElementById("cellWaste")    as HTMLSpanElement;
 const cellMetabolicSpan = document.getElementById("cellMetabolic") as HTMLSpanElement;
-const cellSpeciesSpan = document.getElementById("cellSpecies") as HTMLSpanElement;
+const cellSpeciesSpan   = document.getElementById("cellSpecies")   as HTMLSpanElement;
+const cellLineageSpan   = document.getElementById("cellLineage")   as HTMLSpanElement;
 const cellMassSpan     = document.getElementById("cellMass")     as HTMLSpanElement;
 const cellDamageSpan   = document.getElementById("cellDamage")   as HTMLSpanElement;
 const cellCycleSpan    = document.getElementById("cellCycle")    as HTMLSpanElement;
@@ -149,6 +150,10 @@ function updateInspectorFromMouse(event: MouseEvent) {
     cellMaxAgeSpan.textContent = `div:${org.divisionMass.toFixed(2)}`;
     cellMetabolicSpan.textContent = org.metabolicType === "aerobic" ? "O₂→CO₂" : "CO₂→O₂";
     if (cellSpeciesSpan) cellSpeciesSpan.textContent = org.speciesId.toString();
+    if (cellLineageSpan) {
+      const isCandidate = org.lineageId !== org.speciesId;
+      cellLineageSpan.textContent = isCandidate ? `${org.lineageId} (cand.)` : "-";
+    }
     cellMassSpan.textContent = org.mass.toFixed(3);
     cellDamageSpan.textContent = org.damage.toFixed(3);
     cellCycleSpan.textContent = org.cellCycle.toFixed(2);
@@ -178,6 +183,7 @@ function clearInspector() {
   cellAttackSpan.textContent = "-";
   cellDefenseSpan.textContent = "-";
   cellMotilitySpan.textContent = "-";
+  if (cellLineageSpan) cellLineageSpan.textContent = "-";
 }
 
 function updateParamsFromUI() {
