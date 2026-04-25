@@ -1,15 +1,24 @@
 // src/stats.ts
 const API = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
-const runsList = document.getElementById("runs-list") as HTMLDivElement;
-const loading = document.getElementById("loading") as HTMLParagraphElement;
-const chartSection = document.getElementById("chart-section") as HTMLDivElement;
-const chartTitle = document.getElementById("chart-title") as HTMLHeadingElement;
-const chartCanvas = document.getElementById("chart-canvas") as HTMLCanvasElement;
-const chartLegend = document.getElementById("chart-legend") as HTMLDivElement;
-const backBtn = document.getElementById("back-btn") as HTMLButtonElement;
-const runSettingsDiv = document.getElementById("run-settings") as HTMLDivElement;
-const boardCanvas = document.getElementById("board-canvas") as HTMLCanvasElement;
+const runsList       = document.getElementById("runs-list")       as HTMLDivElement;
+const loading        = document.getElementById("loading")          as HTMLParagraphElement;
+const chartSection   = document.getElementById("chart-section")    as HTMLDivElement;
+const chartTitle     = document.getElementById("chart-title")      as HTMLHeadingElement;
+const chartCanvas    = document.getElementById("chart-canvas")     as HTMLCanvasElement;
+const chartLegend    = document.getElementById("chart-legend")     as HTMLDivElement;
+const runSettingsDiv = document.getElementById("run-settings")     as HTMLDivElement;
+const boardCanvas    = document.getElementById("board-canvas")     as HTMLCanvasElement;
+const chartActionBar = document.getElementById("chart-action-bar") as HTMLDivElement;
+const backBtn        = document.getElementById("back-btn")         as HTMLButtonElement;
+const editRunBtn     = document.getElementById("edit-run-btn")     as HTMLButtonElement;
+const deleteRunBtn   = document.getElementById("delete-run-btn")   as HTMLButtonElement;
+const chartEditForm  = document.getElementById("chart-edit-form")  as HTMLDivElement;
+const chartComment   = document.getElementById("chart-comment")    as HTMLTextAreaElement;
+const chartSaveBtn   = document.getElementById("chart-save-btn")   as HTMLButtonElement;
+const chartCancelBtn = document.getElementById("chart-cancel-btn") as HTMLButtonElement;
+const chartClearStars= document.getElementById("chart-clear-stars")as HTMLButtonElement;
+const chartMeta      = document.getElementById("chart-meta")        as HTMLDivElement;
 
 const MIN_POPULATION_FOR_CHART = 50;
 
@@ -110,7 +119,8 @@ const REASON_LABELS: Record<string, string> = {
 function renderRunList(runs: Run[]) {
   runsList.style.display = "block";
   chartSection.style.display = "none";
-  backBtn.style.display = "none";
+  chartActionBar.style.display = "none";
+  chartEditForm.classList.remove("open");
   runsList.innerHTML = "";
   tooltip.style.display = "none";
 
@@ -187,7 +197,8 @@ async function deleteRun(runId: string, card: HTMLElement) {
 async function showChart(run: Run) {
   runsList.style.display = "none";
   chartSection.style.display = "block";
-  backBtn.style.display = "inline-block";
+  chartActionBar.style.display = "flex";
+  chartEditForm.classList.remove("open");
   chartTitle.textContent = `Run ${run.id} — evolución de especies${run.worldType === "AEROBIC_WORLD_V2" ? " 🌿 v2" : run.worldType === "AEROBIC_WORLD" ? " 🌿" : ""}`;
   chartLegend.innerHTML = "";
   runSettingsDiv.innerHTML = "";
@@ -206,8 +217,56 @@ async function showChart(run: Run) {
   const fullRun: Run = await runRes.json();
 
   if (fullRun.settings) renderSettings(fullRun.settings);
+  renderChartMeta(fullRun);
   drawChart(ctx, snapshots);
   drawFinalBoard(fullRun.finalBoard ?? []);
+
+  // Delete
+  deleteRunBtn.onclick = async () => {
+    if (!confirm(`¿Borrar run ${run.id} y todos sus datos?`)) return;
+    await fetch(`${API}/runs/${run.id}`, { method: "DELETE" });
+    loadRuns();
+  };
+
+  // Star state for the chart edit form
+  let chartRating = fullRun.rating ?? 0;
+
+  function updateChartStars() {
+    chartEditForm.querySelectorAll<HTMLButtonElement>(".star-btn[data-star]").forEach(btn => {
+      btn.classList.toggle("active", Number(btn.dataset.star) <= chartRating);
+    });
+  }
+
+  // Edit toggle — pre-populate on open
+  editRunBtn.onclick = () => {
+    chartComment.value = fullRun.comment ?? "";
+    chartRating = fullRun.rating ?? 0;
+    updateChartStars();
+    chartEditForm.classList.toggle("open");
+  };
+
+  chartEditForm.querySelectorAll<HTMLButtonElement>(".star-btn[data-star]").forEach(btn => {
+    btn.onclick = () => { chartRating = Number(btn.dataset.star); updateChartStars(); };
+  });
+
+  chartClearStars.onclick = () => { chartRating = 0; updateChartStars(); };
+
+  chartCancelBtn.onclick = () => chartEditForm.classList.remove("open");
+
+  chartSaveBtn.onclick = async () => {
+    const comment = chartComment.value;
+    await fetch(`${API}/runs/${run.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ comment, rating: chartRating }),
+    });
+    fullRun.comment = comment;
+    fullRun.rating = chartRating;
+    run.comment = comment;
+    run.rating = chartRating;
+    renderChartMeta(fullRun);
+    chartEditForm.classList.remove("open");
+  };
 }
 
 function drawFinalBoard(cells: FinalCell[]) {
@@ -247,6 +306,16 @@ function drawFinalBoard(cells: FinalCell[]) {
       ctx.strokeRect(c.x * CELL + 0.5, c.y * CELL + 0.5, CELL - 1, CELL - 1);
     }
   }
+}
+
+function renderChartMeta(run: Run) {
+  const stars = run.rating > 0
+    ? `<span class="meta-stars">${"★".repeat(run.rating)}${"☆".repeat(3 - run.rating)}</span>`
+    : "";
+  const comment = run.comment
+    ? `<span class="meta-comment">${escapeHtml(run.comment)}</span>`
+    : "";
+  chartMeta.innerHTML = stars || comment ? `${stars}${comment}` : "";
 }
 
 function renderSettings(s: RunSettings) {

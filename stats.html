@@ -167,13 +167,50 @@
       flex-shrink: 0;
     }
 
-    #back-btn {
-      margin-bottom: 16px;
-      background: #444;
-      color: #eee;
+    #chart-action-bar {
       display: none;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
     }
+    #back-btn     { background: #444; color: #eee; }
     #back-btn:hover { background: #555; }
+    #edit-run-btn { background: #2a3a4a; color: #7df; border: 1px solid #7df; }
+    #edit-run-btn:hover { background: #3a4a5a; }
+    #delete-run-btn { background: #3a1a1a; color: #f88; border: 1px solid #f88; }
+    #delete-run-btn:hover { background: #4a2a2a; }
+
+    #chart-edit-form {
+      display: none;
+      background: #242424;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 10px;
+      margin-bottom: 12px;
+    }
+    #chart-edit-form.open { display: block; }
+    #chart-comment {
+      width: 100%; box-sizing: border-box;
+      background: #1a1a1a; color: #eee;
+      border: 1px solid #444; border-radius: 3px;
+      padding: 6px; font-size: 13px; resize: vertical;
+    }
+    .chart-edit-row {
+      display: flex; align-items: center; gap: 6px; margin-top: 8px;
+    }
+    #chart-save-btn { margin-left: auto; }
+
+    #chart-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 13px;
+      color: #aaa;
+      min-height: 20px;
+    }
+    #chart-meta .meta-stars { font-size: 18px; color: #fc4; letter-spacing: 1px; }
+    #chart-meta .meta-comment { font-style: italic; }
 
     #loading { color: #888; font-style: italic; }
 
@@ -212,7 +249,11 @@
   <h1>Estadísticas de simulaciones</h1>
   <p><a href="/">← Volver a la simulación</a></p>
 
-  <button id="back-btn">← Volver a la lista</button>
+  <div id="chart-action-bar">
+    <button id="back-btn">← Volver a la lista</button>
+    <button id="edit-run-btn">Editar</button>
+    <button id="delete-run-btn">Borrar</button>
+  </div>
 
   <div id="runs-list">
     <p id="loading">Cargando runs...</p>
@@ -220,7 +261,20 @@
 
   <div id="chart-section">
     <h2 id="chart-title"></h2>
+    <div id="chart-meta"></div>
     <div id="run-settings"></div>
+    <div id="chart-edit-form">
+      <textarea id="chart-comment" rows="2" placeholder="Comentario..."></textarea>
+      <div class="chart-edit-row">
+        <span>Valoración:</span>
+        <button class="star-btn" data-star="1">★</button>
+        <button class="star-btn" data-star="2">★</button>
+        <button class="star-btn" data-star="3">★</button>
+        <button id="chart-clear-stars">✕</button>
+        <button id="chart-save-btn">Guardar</button>
+        <button id="chart-cancel-btn">Cancelar</button>
+      </div>
+    </div>
     <div id="chart-and-board">
       <div>
         <canvas id="chart-canvas" width="560" height="480"></canvas>
