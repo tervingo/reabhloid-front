@@ -8,6 +8,8 @@ export interface CellEnv {
   temperature: number;
   o2: number;
   co2: number;
+  resource: number;        // sustrato energético disponible (Fase 2)
+  waste: number;           // residuo tóxico acumulado (Fase 2)
   zone: ZoneId;
   lastEatenTicks: number;  // >0: murió por depredación hace N ticks
   lastDeathTicks: number;  // >0: murió por causa natural hace N ticks

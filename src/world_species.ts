@@ -3,11 +3,15 @@ import { GRID_WIDTH, GRID_HEIGHT } from "./types";
 import type { CellEnv, CellStateSpecies, OrganismSpecies, ZoneId } from "./types";
 
 // --- Constantes de entorno ---
-const GAS_DIFFUSION    = 0.05;
-const GAS_PRODUCE_RATIO = 0.8;
-const GAS_BORDER_REGEN  = 0.4;
-const GAS_BORDER_WIDTH  = 5;
-const GAS_ZONE_REGEN    = 0.009;
+const GAS_DIFFUSION      = 0.05;
+const GAS_PRODUCE_RATIO  = 0.8;
+const GAS_BORDER_REGEN   = 0.4;
+const GAS_BORDER_WIDTH   = 5;
+const GAS_ZONE_REGEN     = 0.009;
+const RESOURCE_DIFFUSION = 0.02;
+const WASTE_DIFFUSION    = 0.015;
+const WASTE_DECAY        = 0.03;   // fracción de residuo que desaparece por tick
+const RESOURCE_REGEN_SCALE = 0.5; // multiplica zoneRegen para obtener regen de recurso
 
 // --- Constantes de biología ---
 const ATTACK_THRESHOLD  = 0.2;   // ataque mínimo para intentar depredar
@@ -283,28 +287,37 @@ export class WorldSpecies {
   // ---- Metabolismo ----
 
   private processMetabolism(org: OrganismSpecies, env: CellEnv) {
-    const thermal = thermalPerformance(env.temperature, org.tempOpt, org.tempBreadth);
+    const thermal  = thermalPerformance(env.temperature, org.tempOpt, org.tempBreadth);
+    const toxicity = Math.max(0, 1 - env.waste);  // residuo reduce eficiencia de captación
 
-    // Captación de gas: sustituye al recurso (Fase 2 añadirá resource)
-    const isAerobic = org.metabolicType === "aerobic";
-    const gasAvail  = isAerobic ? env.o2 : env.co2;
-    const maxUptake = org.uptakeRate * thermal * 0.08;
-    const consumed  = Math.min(gasAvail, maxUptake);
+    // Recurso como sustrato primario
+    const isAerobic   = org.metabolicType === "aerobic";
+    const grossUptake = org.uptakeRate * thermal * toxicity * 0.08;
+    const resourceTaken = Math.min(env.resource, grossUptake);
+    env.resource = Math.max(0, env.resource - resourceTaken);
 
+    // Gas como catalizador: determina la eficiencia real de la asimilación
+    let gasFactor: number;
     if (isAerobic) {
-      env.o2  = Math.max(0, env.o2  - consumed);
-      env.co2 = Math.min(1, env.co2 + consumed * GAS_PRODUCE_RATIO);
+      const o2Needed = resourceTaken * 0.8;
+      const o2Taken  = Math.min(env.o2, o2Needed);
+      env.o2  = Math.max(0, env.o2  - o2Taken);
+      env.co2 = Math.min(1, env.co2 + o2Taken * GAS_PRODUCE_RATIO);
+      gasFactor = o2Taken / Math.max(0.0001, o2Needed);
     } else {
-      env.co2 = Math.max(0, env.co2 - consumed);
-      env.o2  = Math.min(1, env.o2  + consumed * GAS_PRODUCE_RATIO);
+      const co2Needed = resourceTaken * 0.8;
+      const co2Taken  = Math.min(env.co2, co2Needed);
+      env.co2 = Math.max(0, env.co2 - co2Taken);
+      env.o2  = Math.min(1, env.o2  + co2Taken * GAS_PRODUCE_RATIO);
+      gasFactor = co2Taken / Math.max(0.0001, co2Needed);
     }
 
-    const pathwayEff  = isAerobic ? 1.0 : 0.65;
-    const assimilation = consumed * pathwayEff * thermal;
+    const pathwayEff   = isAerobic ? 1.0 : 0.65;
+    const assimilation = resourceTaken * gasFactor * pathwayEff * thermal;
 
     const maintenance =
       org.maintenanceRate +
-      0.015 * org.attack +
+      0.015 * org.attack  +
       0.008 * org.motility +
       0.02  * org.damage;
 
@@ -315,7 +328,7 @@ export class WorldSpecies {
       org.mass      += net * 0.45;
       org.starvation = Math.max(0, org.starvation - 0.04);
     } else {
-      const deficit = -net;
+      const deficit    = -net;
       const fromEnergy = Math.min(org.energy, deficit * 0.7);
       org.energy -= fromEnergy;
       const remaining = deficit - fromEnergy;
@@ -325,9 +338,12 @@ export class WorldSpecies {
       }
     }
 
-    // daño por temperatura extrema
+    // Producción de residuo metabólico
+    env.waste = Math.min(1, env.waste + assimilation * 0.12);
+
+    // Daño por temperatura extrema y residuo
     const thermalDmg = Math.max(0, 1 - thermal) * 0.004;
-    org.damage = Math.max(0, org.damage + thermalDmg - 0.0005);
+    org.damage = Math.max(0, org.damage + thermalDmg + env.waste * 0.002 - 0.0005);
   }
 
   // ---- Ciclo celular ----
@@ -459,16 +475,28 @@ export class WorldSpecies {
 
   // ---- Muerte ----
 
-  private shouldDie(org: OrganismSpecies, _env: CellEnv): boolean {
-    if (org.mass   <= 0.05) return true;
-    if (org.energy < -0.3)  return true;
-    if (org.damage >= 1.5)  return true;
-    if (org.starvation > 2) return true;
-    return false;
+  private computeDeathHazard(org: OrganismSpecies, env: CellEnv): number {
+    const expectedLon = 150;
+    // Función sigmoide: hazard ≈ 0 en juventud, sube a partir de expectedLon
+    const ageTerm     = 1 / (1 + Math.exp(-(org.age - expectedLon) / 30));
+    const thermalPerf = thermalPerformance(env.temperature, org.tempOpt, org.tempBreadth);
+    const thermalTerm = Math.max(0, 0.5 - thermalPerf);  // 0 si thermal≥0.5
+    const toxTerm     = Math.min(1, env.waste * 0.2);
+    return Math.min(0.4, 0.001 + ageTerm * 0.04 + thermalTerm * 0.03 + toxTerm * 0.1);
   }
 
-  private onDeath(_org: OrganismSpecies, env: CellEnv) {
+  private shouldDie(org: OrganismSpecies, env: CellEnv): boolean {
+    if (org.mass      <= 0.05) return true;
+    if (org.energy    <  -0.3) return true;
+    if (org.damage    >= 1.5)  return true;
+    if (org.starvation > 2)    return true;
+    return Math.random() < this.computeDeathHazard(org, env);
+  }
+
+  private onDeath(org: OrganismSpecies, env: CellEnv) {
     env.lastDeathTicks = 4;
+    env.resource = Math.min(1, env.resource + org.mass * 0.35);
+    env.waste    = Math.min(1, env.waste    + org.mass * 0.15);
   }
 
   // ---- Depredación ----
@@ -503,6 +531,8 @@ export class WorldSpecies {
       predator.mass   += gain * 0.2;
       grid[py][px].org = null;
       grid[py][px].env.lastEatenTicks = 5;
+      grid[py][px].env.resource = Math.min(1, grid[py][px].env.resource + prey.mass * 0.15);
+      grid[py][px].env.waste    = Math.min(1, grid[py][px].env.waste    + prey.mass * 0.10);
     } else {
       predator.damage += 0.03;
       prey.damage     += 0.01;
@@ -562,8 +592,7 @@ export class WorldSpecies {
         if (grid[ny][nx].org) continue;
         const env = grid[ny][nx].env;
         const thermal = thermalPerformance(env.temperature, org.tempOpt, org.tempBreadth);
-        const gas = org.metabolicType === "aerobic" ? env.o2 : env.co2;
-        const score = gas * 0.6 + thermal * 0.4;
+        const score = env.resource * 0.5 + thermal * 0.4 - env.waste * 0.3;
         candidates.push([nx, ny]);
         if (score > bestScore) { bestScore = score; best = [nx, ny]; }
       }
@@ -579,8 +608,10 @@ export class WorldSpecies {
   step_env() { this.updateEnvironment(); }
 
   private updateEnvironment() {
-    const dO2  = Array.from({ length: GRID_HEIGHT }, () => new Float32Array(GRID_WIDTH));
-    const dCO2 = Array.from({ length: GRID_HEIGHT }, () => new Float32Array(GRID_WIDTH));
+    const dO2   = Array.from({ length: GRID_HEIGHT }, () => new Float32Array(GRID_WIDTH));
+    const dCO2  = Array.from({ length: GRID_HEIGHT }, () => new Float32Array(GRID_WIDTH));
+    const dRes  = Array.from({ length: GRID_HEIGHT }, () => new Float32Array(GRID_WIDTH));
+    const dWaste= Array.from({ length: GRID_HEIGHT }, () => new Float32Array(GRID_WIDTH));
 
     for (let y = 0; y < GRID_HEIGHT; y++) {
       for (let x = 0; x < GRID_WIDTH; x++) {
@@ -591,8 +622,10 @@ export class WorldSpecies {
             const nx = x + dx, ny = y + dy;
             if (nx < 0 || ny < 0 || nx >= GRID_WIDTH || ny >= GRID_HEIGHT) continue;
             const n = this.grid[ny][nx];
-            dO2[y][x]  += GAS_DIFFUSION * (n.env.o2  - cell.env.o2);
-            dCO2[y][x] += GAS_DIFFUSION * (n.env.co2 - cell.env.co2);
+            dO2[y][x]   += GAS_DIFFUSION      * (n.env.o2       - cell.env.o2);
+            dCO2[y][x]  += GAS_DIFFUSION      * (n.env.co2      - cell.env.co2);
+            dRes[y][x]  += RESOURCE_DIFFUSION * (n.env.resource - cell.env.resource);
+            dWaste[y][x]+= WASTE_DIFFUSION    * (n.env.waste    - cell.env.waste);
           }
         }
       }
@@ -600,7 +633,9 @@ export class WorldSpecies {
 
     for (let y = 0; y < GRID_HEIGHT; y++) {
       for (let x = 0; x < GRID_WIDTH; x++) {
-        const env = this.grid[y][x].env;
+        const env  = this.grid[y][x].env;
+        const zone = env.zone as number;
+
         env.o2  = Math.max(0, Math.min(1, env.o2  + dO2[y][x]));
         env.co2 = Math.max(0, Math.min(1, env.co2 + dCO2[y][x]));
 
@@ -614,6 +649,16 @@ export class WorldSpecies {
         } else if (x >= GRID_WIDTH / 2) {
           env.co2 = Math.min(1, env.co2 + GAS_ZONE_REGEN);
         }
+
+        // Recurso: difusión + regeneración por zona
+        env.resource = Math.max(0, Math.min(1,
+          env.resource + dRes[y][x] + this.zoneRegen[zone] * RESOURCE_REGEN_SCALE
+        ));
+
+        // Residuo: difusión + decaimiento natural
+        env.waste = Math.max(0, Math.min(1,
+          env.waste + dWaste[y][x] - env.waste * WASTE_DECAY
+        ));
 
         env.temperature = this.getActualZoneTemp(env.zone);
         if (env.lastEatenTicks > 0) env.lastEatenTicks -= 1;
@@ -643,7 +688,7 @@ export class WorldSpecies {
           o2 = 0; co2 = 0.9 + Math.random() * 0.1;
         }
         row.push({
-          env: { temperature: baseTemp, o2, co2, zone, lastEatenTicks: 0, lastDeathTicks: 0 },
+          env: { temperature: baseTemp, o2, co2, resource: 0.8, waste: 0, zone, lastEatenTicks: 0, lastDeathTicks: 0 },
           org: null,
         });
       }

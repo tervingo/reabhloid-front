@@ -44,8 +44,10 @@ const cellTempOptSpan = document.getElementById("cellTempOpt") as HTMLSpanElemen
 const cellEnergySpan = document.getElementById("cellEnergy") as HTMLSpanElement;
 const cellAgeSpan = document.getElementById("cellAge") as HTMLSpanElement;
 const cellMaxAgeSpan = document.getElementById("cellMaxAge") as HTMLSpanElement;
-const cellO2Span = document.getElementById("cellO2") as HTMLSpanElement;
-const cellCO2Span = document.getElementById("cellCO2") as HTMLSpanElement;
+const cellO2Span       = document.getElementById("cellO2")       as HTMLSpanElement;
+const cellCO2Span      = document.getElementById("cellCO2")      as HTMLSpanElement;
+const cellResourceSpan = document.getElementById("cellResource") as HTMLSpanElement;
+const cellWasteSpan    = document.getElementById("cellWaste")    as HTMLSpanElement;
 const cellMetabolicSpan = document.getElementById("cellMetabolic") as HTMLSpanElement;
 const cellSpeciesSpan = document.getElementById("cellSpecies") as HTMLSpanElement;
 const cellMassSpan     = document.getElementById("cellMass")     as HTMLSpanElement;
@@ -117,8 +119,10 @@ function updateInspectorFromMouse(event: MouseEvent) {
   }
 
   const cell = world.grid[y][x];
-  cellO2Span.textContent = cell.env.o2.toFixed(3);
-  cellCO2Span.textContent = cell.env.co2.toFixed(3);
+  cellO2Span.textContent       = cell.env.o2.toFixed(3);
+  cellCO2Span.textContent      = cell.env.co2.toFixed(3);
+  cellResourceSpan.textContent = cell.env.resource.toFixed(3);
+  cellWasteSpan.textContent    = cell.env.waste.toFixed(3);
   cellPosSpan.textContent = `${x}, ${y}`;
   cellZoneSpan.textContent = cell.env.zone.toString();
 
@@ -162,8 +166,10 @@ function clearInspector() {
   cellEnergySpan.textContent = "-";
   cellAgeSpan.textContent = "-";
   cellMaxAgeSpan.textContent = "-";
-  cellO2Span.textContent = "-";
-  cellCO2Span.textContent = "-";
+  cellO2Span.textContent       = "-";
+  cellCO2Span.textContent      = "-";
+  cellResourceSpan.textContent = "-";
+  cellWasteSpan.textContent    = "-";
   cellMetabolicSpan.textContent = "-";
   if (cellSpeciesSpan) cellSpeciesSpan.textContent = "-";
   cellMassSpan.textContent = "-";
@@ -278,14 +284,15 @@ function draw() {
     for (let x = 0; x < GRID_WIDTH; x++) {
       const cell = world.grid[y][x];
 
-      // Fondo: O2 → azul, CO2 → rojo, mezcla → interpolación
-      const o2 = cell.env.o2;
+      // Fondo: O2→azul, CO2→rojo, recurso→verde, residuo→naranja
+      const o2  = cell.env.o2;
       const co2 = cell.env.co2;
-      // Base de zona para el brillo (fría/templada/cálida)
+      const res = cell.env.resource;
+      const wst = cell.env.waste;
       const zoneDim = cell.env.zone === 0 ? 0.6 : cell.env.zone === 1 ? 0.8 : 1.0;
-      const rBg = Math.round(Math.min(255, co2 * 160 * zoneDim));
-      const gBg = Math.round(Math.min(255, (o2 + co2) * 30 * zoneDim));
-      const bBg = Math.round(Math.min(255, o2 * 160 * zoneDim));
+      const rBg = Math.round(Math.min(255, co2 * 130 * zoneDim + wst * 70));
+      const gBg = Math.round(Math.min(255, (o2 + co2) * 22 * zoneDim + res * 50));
+      const bBg = Math.round(Math.min(255, o2 * 130 * zoneDim));
 
       ctx.fillStyle = `rgb(${rBg}, ${gBg}, ${bBg})`;
       ctx.fillRect(
